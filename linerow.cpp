@@ -4,10 +4,10 @@ line_p RowArray;
 int size;
 int density;
 int iterator = 0;
-int maxDifference;
+float maxDifference;
 
 
-LineRow::LineRow(int size, int density, int maxDifference)
+LineRow::LineRow(int size, int density, float maxDifference)
 {
   RowArray = new line_t[size];
   this->size = size;
@@ -61,7 +61,7 @@ void LineRow::setNewLine(pcl::PointCloud<pcl::PointXYZ> cloudPiece, int position
     for(int i = 0; i < cloudPiece.width; i++){
       float onePointError = m * cloudPiece.x + q -cloudPiece.y;
 
-      if(onePointError > maxDifference){
+      if(abs((int)onePointError) > maxDifference){  //Test if the Error is greater then the maximal acepted Difference
         counter ++;
       }
       r += onePointError;

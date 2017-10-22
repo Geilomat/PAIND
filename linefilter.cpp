@@ -16,6 +16,8 @@ using namespace std;
 #include <std_msgs/Int32.h>
 
 #include <pcl_ros/point_cloud.h>
+#include <pcl/filters/radius_outlier_removal.h>
+#include <pcl/filters/conditional_removal.h>
 
 #include <pcl-1.7/pcl/io/pcd_io.h>
 
@@ -25,6 +27,7 @@ using namespace std;
 
 
 float linePieceSize = 1.0;    //Size for one piece = 1m
+float maxDifference = 0.2;      //Max Difference which is accepted bevor a staff etc. is detected.
 int density = 200;            //points per 1 meter
 int numberOfLines;
 
@@ -61,21 +64,23 @@ void PCColumnHandler(const sensor_msgs::PointCloud2ConstPtr& input){
   filter.setInputCloud(unfiltered_cloud);
   filter.filter(cloud_filtered);
 
-  pcl::ConditionAnd<pcl::PointXYZ>::Ptr range_cond (new pcl::ConditionAnd<pcl::PointXYZ> ());
+  pcl::ConditionAnd<pcl::PointXYZ>::Ptr range_cond (new pcl::ConditionAnd<pcl::PointXYZ>);
   range_cond->addComparison (pcl::FieldComparison<pcl::PointXYZ>::ConstPtr (new pcl::FieldComparison<pcl::PointXYZ> ("z", pcl::ComparisonOps::LT, -10.0)));
 
-  numberOfLines = (int) (cloud_filterd.width/linePieceSize);
-  line_t lineColunm[numberOfLInes];
+  numberOfLines = (int) (abs((int)cloud_filtered[0].x) + abs((int)cloud_filtered[cloud_filtered.width-1].x))/linePieceSize;
+  LineRow::Ptr LineRowTemp = new LineRow(numberOfLines, density, maxDifference);
+
+
   //Divide in defined pc pieces
   int i = 0;
   do{
   float xstart = cloud_filtered[i].x;
-  pcl::PointXYZ begin = cloud_filterd[i];
+  pcl::PointXYZ begin = cloud_filtered[i];
 
-  while(cloud_filterd[i] < xstart + linePieceSize){
+  while(cloud_filtered[i].x < (xstart + linePieceSize)){
     i ++;
   }
-  pcl::PointXYZ end = cloud_filered[i];
+  pcl::PointXYZ end = cloud_filtered[i];
   }
   while(i < cloud_filtered.width);
 
@@ -136,7 +141,7 @@ int main(int argc, char **argv)
 
 
   // Create a ROS publisher for the output point cloud
-  pub = nh.advertise<sensor_msgs::PointCloud2> ("output_from_my_filter", 1);
+  pub = n.advertise<sensor_msgs::PointCloud2> ("output_from_my_filter", 1);
 
   /**
    * ros::spin() will enter a loop, pumping callbacks.  With this version, all
