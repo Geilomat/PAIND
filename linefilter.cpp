@@ -68,7 +68,6 @@ void PCColumnHandler(const sensor_msgs::PointCloud2ConstPtr& input){
   range_cond->addComparison (pcl::FieldComparison<pcl::PointXYZ>::ConstPtr (new pcl::FieldComparison<pcl::PointXYZ> ("z", pcl::ComparisonOps::LT, -10.0)));
 
   numberOfLines = (int) (abs((int)cloud_filtered[0].x) + abs((int)cloud_filtered[cloud_filtered.width-1].x))/linePieceSize;
-  LineRow::Ptr LineRowTemp = new LineRow(numberOfLines, density, maxDifference);
 
 
   //Divide in defined pc pieces
