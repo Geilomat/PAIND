@@ -1,18 +1,9 @@
 #include "linerow.h"
 
-line_p RowArray;
-int size;
-int density;
-int iterator = 0;
-float maxDifference;
 
-
-LineRow::LineRow(int size, int density, float maxDifference)
+LineRow::LineRow(int size, int density, float maxDifference) : size(size), density(density), maxDifference(maxDifference)
 {
   RowArray = new line_t[size];
-  this->size = size;
-  this->density = density;
-  this->maxDifference = maxDifference;
 }
 
 /* Set a new Line out of the given PointCloud piece
@@ -53,13 +44,13 @@ void LineRow::setNewLine(pcl::PointCloud<pcl::PointXYZ> cloudPiece, int position
       denumerator += cloudPiece[i].x * cloudPiece[i].x;
     }
 
-    m = numerator/(denumerator * cloudPiece.width * xMean²);
+    m = numerator/(denumerator * cloudPiece.width * xMean * yMean);
     q = yMean - m*xMean;
 
     r = 0;
     int counter = 0;
     for(int i = 0; i < cloudPiece.width; i++){
-      float onePointError = m * cloudPiece.x + q -cloudPiece.y;
+      float onePointError = m * cloudPiece[i].x + q - cloudPiece[i].y;
 
       if(abs((int)onePointError) > maxDifference){  //Test if the Error is greater then the maximal acepted Difference
         counter ++;
@@ -73,42 +64,46 @@ void LineRow::setNewLine(pcl::PointCloud<pcl::PointXYZ> cloudPiece, int position
   }
 
   //Save calculated values int the Array
-  RowArray[Iterator].x = x;
-  RowArray[Iterator].q = q;
-  RowArray[Iterator].m = m;
-  RowArray[Iterator].r = r;
-  RowArray[Iterator].value = value;
+  RowArray[iterator].x = x;
+  RowArray[iterator].q = q;
+  RowArray[iterator].m = m;
+  RowArray[iterator].r = r;
+  RowArray[iterator].value = value;
 
-  Iterator ++;
+  iterator ++;
 }
 
 line_p LineRow::getRowArray(){
   return RowArray;
 }
 
-int LineRow::getLineValueByPosition(int position){
-  for(int i = 0 ; i < size; i++){
-
-  }
-  else{
-    return -1;
-  }
+int LineRow::getSize(){
+  return size;
 }
 
-int LineRow::getLineValueByIndex(int index){
-  if(index < size){
-    return RowArray[index].value;
-  }
-  else{
-    return -2;
-  }
-}
+//int LineRow::getLineValueByPosition(int position){
+//  for(int i = 0 ; i < size; i++){
 
-float LineRow::getLineHight(int x){
-  if(x < size){
-    return CloumnArray[x].q;
-  }
-  else{
-    return -1;
-  }
-}
+//  }
+//  else{
+//    return -1;
+//  }
+//}
+
+//int LineRow::getLineValueByIndex(int index){
+//  if(index < size){
+//    return RowArray[index].value;
+//  }
+//  else{
+//    return -2;
+//  }
+//}
+
+//float LineRow::getLineHight(int x){
+//  if(x < size){
+//    return CloumnArray[x].q;
+//  }
+//  else{
+//    return -1;
+//  }
+//}

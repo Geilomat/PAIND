@@ -24,6 +24,7 @@ using namespace std;
 //specific include for the columns
 #include "linerow.h"
 
+#define ISSIMUALTION 1
 
 
 float linePieceSize = 1.0;    //Size for one piece = 1m
@@ -32,7 +33,7 @@ int density = 200;            //points per 1 meter
 int numberOfLines;
 
 ros::Publisher pub;
-
+ros::Publisher linePub;       //Publisher for the lineCloumn
 
 
 void PCColumnHandler(const sensor_msgs::PointCloud2ConstPtr& input){
@@ -50,7 +51,7 @@ void PCColumnHandler(const sensor_msgs::PointCloud2ConstPtr& input){
   pcl::PointCloud<pcl::PointXYZ> cloud_filteredConditional;
 
   // Covert to PCL data type
-  pcl::fromROSMsg(*input, *unfiltered_cloud);
+  pcl::fromROSMsg(*input, cloud_filtered);
 
   // Perform the filtering
 //  pcl::VoxelGrid<pcl::PointXYZ> sor;
@@ -58,28 +59,35 @@ void PCColumnHandler(const sensor_msgs::PointCloud2ConstPtr& input){
 //  sor.setLeafSize (0.1, 0.1,0);
 //  sor.setMinimumPointsNumberPerVoxel (200);
 //  sor.filter (cloud_filtered);
-  pcl::RadiusOutlierRemoval<pcl::PointXYZ> filter (new pcl::RadiusOutlierRemoval<pcl::PointXYZ>);
-  filter.setMinNeighborsInRadius(3);
-  filter.setRadiusSearch(0.5);
-  filter.setInputCloud(unfiltered_cloud);
-  filter.filter(cloud_filtered);
+//  pcl::RadiusOutlierRemoval<pcl::PointXYZ> filter (new pcl::RadiusOutlierRemoval<pcl::PointXYZ>);
+//  filter.setMinNeighborsInRadius(3);
+//  filter.setRadiusSearch(0.5);
+//  filter.setInputCloud(unfiltered_cloud);
+//  filter.filter(cloud_filtered);
 
-  pcl::ConditionAnd<pcl::PointXYZ>::Ptr range_cond (new pcl::ConditionAnd<pcl::PointXYZ>);
-  range_cond->addComparison (pcl::FieldComparison<pcl::PointXYZ>::ConstPtr (new pcl::FieldComparison<pcl::PointXYZ> ("z", pcl::ComparisonOps::LT, -10.0)));
+//  pcl::ConditionAnd<pcl::PointXYZ>::Ptr range_cond (new pcl::ConditionAnd<pcl::PointXYZ>);
+//  range_cond->addComparison (pcl::FieldComparison<pcl::PointXYZ>::ConstPtr (new pcl::FieldComparison<pcl::PointXYZ> ("z", pcl::ComparisonOps::LT, -10.0)));
 
   numberOfLines = (int) (abs((int)cloud_filtered[0].x) + abs((int)cloud_filtered[cloud_filtered.width-1].x))/linePieceSize;
 
+  LineRow* TempRow =  new LineRow(numberOfLines, density, maxDifference);
 
   //Divide in defined pc pieces
   int i = 0;
-  do{
-  float xstart = cloud_filtered[i].x;
-  pcl::PointXYZ begin = cloud_filtered[i];
-
-  while(cloud_filtered[i].x < (xstart + linePieceSize)){
+  while(!(((int)cloud_filtered[i].x)%1 < 0.01 && ((int)cloud_filtered[i].x)%1 > -0.01)){ // Determinate the start point +- 1cm
     i ++;
   }
-  pcl::PointXYZ end = cloud_filtered[i];
+  do{
+  int xstart = (int) cloud_filtered[i].x;
+  //pcl::PointXYZ begin = cloud_filtered[i];
+  pcl::PointCloud<pcl::PointXYZ> tempCloud;
+  int j = 0;
+  while(cloud_filtered[i].x < (xstart + linePieceSize)){
+    tempCloud[j] = cloud_filtered[i];
+    i ++;
+  }
+
+  TempRow->setNewLine(tempCloud,xstart);  //Make a new line with the given PC piece
   }
   while(i < cloud_filtered.width);
 
@@ -87,6 +95,62 @@ void PCColumnHandler(const sensor_msgs::PointCloud2ConstPtr& input){
   // Convert to ROS data type
   //pcl_conversions::fromPCL(cloud_filtered, output);
   pcl::toROSMsg(cloud_filteredConditional,output);
+
+  //detemate if this is a Simulation -> publish lines, else store the made object into the data
+  if(ISSIMUALTION){
+    //@ToDo Convert into line pieces an publish it.
+
+    visualization_msgs::Marker line_list;
+    line_list.type = visualization_msgs::Marker::LINE_LIST;
+
+    line_list.scale.x = linePieceSize;
+
+    // Line list is red
+    line_list.color.r = 1.0;
+    line_list.color.a = 1.0;
+    line_p tempArray = TempRow->getRowArray();
+
+    geometry_msgs::Point p;
+    p.z = 0;
+    for(int i = 0; i < TempRow->getSize(); i++){
+      p.x = tempArray[i].x;
+      p.y = tempArray[i].q;
+
+      line_list.points.push_back(p);
+      p.x = tempArray[i].x + linePieceSize;
+      p.y = tempArray[i].q + linePieceSize * tempArray[i].m;
+      line_list.points.push_back(p);
+    }
+
+    linePub.publish(line_list);
+
+    // Create the vertices for the points and lines
+//    for (uint32_t i = 0; i < 100; ++i)
+//    {
+//      float y = 5 * sin(f + i / 100.0f * 2 * M_PI);
+//      float z = 5 * cos(f + i / 100.0f * 2 * M_PI);
+
+//      geometry_msgs::Point p;
+//      p.x = (int32_t)i - 50;
+//      p.y = y;
+//      p.z = z;
+
+//      points.points.push_back(p);
+//      line_strip.points.push_back(p);
+
+//      // The line list needs two points for each line
+//      line_list.points.push_back(p);
+//      p.z += 1.0;
+//      line_list.points.push_back(p);
+//    }
+
+//    linePub.publish(line_list);
+
+  }
+  else{
+    //@ToDoSave into file
+  }
+
 
 
   // Publish the data.
@@ -141,6 +205,7 @@ int main(int argc, char **argv)
 
   // Create a ROS publisher for the output point cloud
   pub = n.advertise<sensor_msgs::PointCloud2> ("output_from_my_filter", 1);
+  linePub = n.advertise<visualization_msgs::Marker>("filteredRowinLines", 1);
 
   /**
    * ros::spin() will enter a loop, pumping callbacks.  With this version, all
