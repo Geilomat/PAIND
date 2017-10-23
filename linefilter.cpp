@@ -34,6 +34,7 @@ int numberOfLines;
 
 ros::Publisher pub;
 ros::Publisher linePub;       //Publisher for the lineCloumn
+float f = 0.0;
 
 
 void PCColumnHandler(const sensor_msgs::PointCloud2ConstPtr& input){
@@ -68,10 +69,10 @@ void PCColumnHandler(const sensor_msgs::PointCloud2ConstPtr& input){
 //  pcl::ConditionAnd<pcl::PointXYZ>::Ptr range_cond (new pcl::ConditionAnd<pcl::PointXYZ>);
 //  range_cond->addComparison (pcl::FieldComparison<pcl::PointXYZ>::ConstPtr (new pcl::FieldComparison<pcl::PointXYZ> ("z", pcl::ComparisonOps::LT, -10.0)));
 
-  numberOfLines = (int) (abs((int)cloud_filtered[0].x) + abs((int)cloud_filtered[cloud_filtered.width-1].x))/linePieceSize;
+  //numberOfLines = (int) (abs((int)cloud_filtered[0].x) + abs((int)cloud_filtered[cloud_filtered.width-1].x))/linePieceSize;
 
-  LineRow* TempRow =  new LineRow(numberOfLines, density, maxDifference);
-
+  //LineRow* TempRow =  new LineRow(numberOfLines, density, maxDifference);
+  /*
   //Divide in defined pc pieces
   int i = 0;
   while(!(((int)cloud_filtered[i].x)%1 < 0.01 && ((int)cloud_filtered[i].x)%1 > -0.01)){ // Determinate the start point +- 1cm
@@ -97,7 +98,10 @@ void PCColumnHandler(const sensor_msgs::PointCloud2ConstPtr& input){
   pcl::toROSMsg(cloud_filteredConditional,output);
 
   //detemate if this is a Simulation -> publish lines, else store the made object into the data
+
+  */
   if(ISSIMUALTION){
+    /*
     //@ToDo Convert into line pieces an publish it.
 
     visualization_msgs::Marker line_list;
@@ -113,38 +117,52 @@ void PCColumnHandler(const sensor_msgs::PointCloud2ConstPtr& input){
     geometry_msgs::Point p;
     p.z = 0;
     for(int i = 0; i < TempRow->getSize(); i++){
-      p.x = tempArray[i].x;
-      p.y = tempArray[i].q;
+      p.x = i; //tempArray[i].x;
+      p.y = 0; //tempArray[i].q;
 
       line_list.points.push_back(p);
-      p.x = tempArray[i].x + linePieceSize;
-      p.y = tempArray[i].q + linePieceSize * tempArray[i].m;
+      p.x = i + 1;//tempArray[i].x + linePieceSize;
+      p.y = 2; //tempArray[i].q + linePieceSize * tempArray[i].m;
+      line_list.points.push_back(p);
+    }
+
+
+    linePub.publish(line_list);
+    */
+
+
+    visualization_msgs::Marker line_list;
+    line_list.type = visualization_msgs::Marker::LINE_LIST;
+    line_list.header.frame_id = "/my_frame";
+    line_list.header.stamp = ros::Time::now();
+    line_list.ns = "points_and_lines";
+    line_list.action = visualization_msgs::Marker::ADD;
+    //line_list.pose.orientation.w = 1.0;
+    //line_list.id = 2;
+
+    line_list.scale.x = linePieceSize;
+
+    line_list.color.r = 1.0;
+    line_list.color.a = 1.0;
+
+    // Create the vertices for the points and lines
+    for (uint32_t i = 0; i < 100; ++i)
+    {
+      float y = 5 * sin(f + i / 100.0f * 2 * M_PI);
+      float z = 0;//5 * cos(f + i / 100.0f * 2 * M_PI);
+
+      geometry_msgs::Point p;
+      p.x = (int32_t)i - 50;
+      p.y = y;
+      p.z = z;
+
+//      // The line list needs two points for each line
+      line_list.points.push_back(p);
+      p.x += linePieceSize;
       line_list.points.push_back(p);
     }
 
     linePub.publish(line_list);
-
-    // Create the vertices for the points and lines
-//    for (uint32_t i = 0; i < 100; ++i)
-//    {
-//      float y = 5 * sin(f + i / 100.0f * 2 * M_PI);
-//      float z = 5 * cos(f + i / 100.0f * 2 * M_PI);
-
-//      geometry_msgs::Point p;
-//      p.x = (int32_t)i - 50;
-//      p.y = y;
-//      p.z = z;
-
-//      points.points.push_back(p);
-//      line_strip.points.push_back(p);
-
-//      // The line list needs two points for each line
-//      line_list.points.push_back(p);
-//      p.z += 1.0;
-//      line_list.points.push_back(p);
-//    }
-
-//    linePub.publish(line_list);
 
   }
   else{
@@ -154,7 +172,8 @@ void PCColumnHandler(const sensor_msgs::PointCloud2ConstPtr& input){
 
 
   // Publish the data.
-  pub.publish (output);
+  //pub.publish (output);
+  f += 0.04;
 }
 
 
