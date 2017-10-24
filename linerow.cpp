@@ -4,6 +4,7 @@
 LineRow::LineRow(int size, int density, float maxDifference) : size(size), density(density), maxDifference(maxDifference)
 {
   RowArray = new line_t[size];
+  iterator = 0;
 }
 
 /* Set a new Line out of the given PointCloud piece

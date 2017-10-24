@@ -22,19 +22,28 @@ using namespace std;
 #include <pcl-1.7/pcl/io/pcd_io.h>
 
 //specific include for the columns
-#include "linerow.h"
+//#include "linerow.h"
 
 #define ISSIMUALTION 1
 
+typedef struct line{
+  int x;
+  float q;
+  float m;
+  float r;
+  int value;
+}line_t;
 
-float linePieceSize = 1.0;    //Size for one piece = 1m
-float maxDifference = 0.2;      //Max Difference which is accepted bevor a staff etc. is detected.
-int density = 200;            //points per 1 meter
+typedef line_t* line_p;
+
+
+float linePieceSize = 5.0;    //Size for one piece = 1m
+float maxDifference = 20;      //Max Difference which is accepted bevor a staff etc. is detected.
+int density = 50;            //points per 1 meter
 int numberOfLines;
 
 ros::Publisher pub;
 ros::Publisher linePub;       //Publisher for the lineCloumn
-float f = 0.0;
 
 
 void PCColumnHandler(const sensor_msgs::PointCloud2ConstPtr& input){
@@ -70,45 +79,117 @@ void PCColumnHandler(const sensor_msgs::PointCloud2ConstPtr& input){
 //  range_cond->addComparison (pcl::FieldComparison<pcl::PointXYZ>::ConstPtr (new pcl::FieldComparison<pcl::PointXYZ> ("z", pcl::ComparisonOps::LT, -10.0)));
 
 
-  numberOfLines = (int) (abs((int)cloud_filtered[0].x) + abs((int)cloud_filtered[cloud_filtered.width-1].x))/linePieceSize;
+  numberOfLines = (int) (abs((int)cloud_filtered[0].x) + abs((int)cloud_filtered[cloud_filtered.width-1].x))/linePieceSize + 1;
 
-  LineRow* TempRow =  new LineRow(numberOfLines, density, maxDifference);
-  /*
-  //Divide in defined pc pieces
+  //LineRow* TempRow (new LineRow(numberOfLines, density, maxDifference));
+
+  line_p lineArray (new line_t[numberOfLines]);
+
+  //Divide in defined pc pieces and convert them into line pieces
+
   int i = 0;
+  int lineArrayIterator = 0;
   while(!(((int)cloud_filtered[i].x)%1 < 0.01 && ((int)cloud_filtered[i].x)%1 > -0.01)){ // Determinate the start point +- 1cm
     i ++;
   }
+
   do{
-  int xstart = (int) cloud_filtered[i].x;
-  //pcl::PointXYZ begin = cloud_filtered[i];
-  pcl::PointCloud<pcl::PointXYZ> tempCloud;
-  int j = 0;
-  while(cloud_filtered[i].x < (xstart + linePieceSize)){
-    tempCloud[j] = cloud_filtered[i];
+    int start = i;
+    float xstart = cloud_filtered[i].x;
+
+
+  while(cloud_filtered[i].x < (xstart + linePieceSize) && i < (cloud_filtered.width-1)){
     i ++;
   }
+    int end = i;
 
-  TempRow->setNewLine(tempCloud,xstart);  //Make a new line with the given PC piece
+    int x = (int) cloud_filtered[start].x;
+    int value = 0;
+    float q = 0;
+    float m = 0;
+    float r = 0;
+    int size = abs(end - start);
+
+    if(size < density){ // if the densitiy is too small
+      value = -1;
+    }
+    else{ // From here on good
+
+      float xMean = 0;
+      float yMean = 0;
+
+      for(int i = start; i <= end;i++){
+        xMean += cloud_filtered[i].x;
+        yMean += cloud_filtered[i].y;
+      }
+
+      xMean = xMean/size;
+      yMean = yMean/size;
+
+      float numerator = 0;
+      float denumerator = 0;
+
+      for(int i = start; i <= end; i++){
+        numerator += (cloud_filtered[i].x-xMean)*(cloud_filtered[i].y - yMean);
+        denumerator += cloud_filtered[i].x * cloud_filtered[i].x;
+      }
+
+      m = numerator/(denumerator * size * xMean * yMean);
+      q = yMean - m*xMean;
+
+      r = 0;
+      int counter = 0;
+      for(int i = start ; i <= size; i++){
+        float onePointError = m * cloud_filtered[i].x + q - cloud_filtered[i].y;
+
+        if(abs((int)onePointError) > maxDifference){  //Test if the Error is greater then the maximal acepted Difference
+          counter ++;
+        }
+        r += onePointError;
+      }
+
+      if(counter > 2){ //If there are too much height difference in more then one point -> probebly a staff or something
+        value = -1;
+      }
+
+    }
+
+    //Save calculated values int the Array
+    lineArray[lineArrayIterator].x = x;
+    lineArray[lineArrayIterator].q = q;
+    lineArray[lineArrayIterator].m = m;
+    lineArray[lineArrayIterator].r = r;
+    lineArray[lineArrayIterator].value = value;
+
+    lineArrayIterator ++;
+//    if(lineArrayIterator == numberOfLines ){
+//      break;
+//    }
+
+
+  //TempRow->setNewLine(tempCloud,xstart);  //Make a new line with the given PC piece
   }
-  while(i < cloud_filtered.width);
+  while(lineArrayIterator < numberOfLines);
 
-
-  // Convert to ROS data type
-  //pcl_conversions::fromPCL(cloud_filtered, output);
-  pcl::toROSMsg(cloud_filteredConditional,output);
-
+  //pcl::PointXYZ begin = cloud_filtered[i];
   //detemate if this is a Simulation -> publish lines, else store the made object into the data
 
-  */
+
   if(ISSIMUALTION){
 
-    //@ToDo Convert into line pieces an publish it.
+    //@ToDo Convert into line pieces and publish it.
 
     visualization_msgs::Marker line_list_bad;
     visualization_msgs::Marker line_list_good;
     visualization_msgs::Marker line_list_possible;
     line_list_bad.type = line_list_good.type = line_list_possible.type = visualization_msgs::Marker::LINE_LIST;
+
+
+    //line_p tempA = TempRow->getRowArray();
+
+    // Convert to ROS data type
+    //pcl_conversions::fromPCL(cloud_filtered, output);
+    //pcl::toROSMsg(cloud_filteredConditional,output);
 
     line_list_bad.header.frame_id = line_list_possible.header.frame_id =  line_list_good.header.frame_id = "/my_frame";
     line_list_bad.header.stamp = line_list_possible.header.stamp = line_list_good.header.stamp = ros::Time::now();
@@ -136,92 +217,56 @@ void PCColumnHandler(const sensor_msgs::PointCloud2ConstPtr& input){
     // Make good Lines green
     line_list_good.color.g = 1.0f;
     line_list_good.color.a = 1.0;
-    line_p tempArray = TempRow->getRowArray();
 
     geometry_msgs::Point p;
     p.z = 0;
-    for(int i = 0; i < TempRow->getSize(); i++){
-      if(i%3 == 0){
-        p.x = i; //tempArray[i].x;
-        p.y =5.0; //tempArray[i].q;
 
-        line_list_possible.points.push_back(p);
-        p.x = i + linePieceSize;//tempArray[i].x + linePieceSize;
-        p.y = 10.0; //tempArray[i].q + linePieceSize * tempArray[i].m;
-        line_list_possible.points.push_back(p);
-      }
-      if(i%2 == 0){
-        p.x = i; //tempArray[i].x;
-        p.y =5.0; //tempArray[i].q;
 
-        line_list_good.points.push_back(p);
-        p.x = i + linePieceSize;//tempArray[i].x + linePieceSize;
-        p.y = 10.0; //tempArray[i].q + linePieceSize * tempArray[i].m;
-        line_list_good.points.push_back(p);
+    for(int i = 0; i < numberOfLines; i++){
 
-      }
-      else{
-      p.x = i; //tempArray[i].x;
-      p.y =5.0; //tempArray[i].q;
-
+    if(lineArray[i].value == -1){
+      p.x = lineArray[i].x;
+      p.y = lineArray[i].q;
       line_list_bad.points.push_back(p);
-      p.x = i + linePieceSize;//tempArray[i].x + linePieceSize;
-      p.y = 10.0; //tempArray[i].q + linePieceSize * tempArray[i].m;
+
+      p.x = lineArray[i].x + linePieceSize;
+      p.y = lineArray[i].q + lineArray[i].m * linePieceSize;
       line_list_bad.points.push_back(p);
-      }
     }
+    else if(lineArray[i].r >= 100){
+      p.x = lineArray[i].x;
+      p.y = lineArray[i].q;
+      line_list_possible.points.push_back(p);
 
+      p.x = lineArray[i].x + linePieceSize;
+      p.y = lineArray[i].q + lineArray[i].m * linePieceSize;
+      line_list_possible.points.push_back(p);
+    }
+    else{
+      p.x = lineArray[i].x;
+      p.y = lineArray[i].q;
+      line_list_good.points.push_back(p);
+
+      p.x = lineArray[i].x + linePieceSize;
+      p.y = lineArray[i].q + lineArray[i].m * linePieceSize;
+      line_list_good.points.push_back(p);
+    }
+    }
 
     linePub.publish(line_list_bad);
     linePub.publish(line_list_possible);
     linePub.publish(line_list_good);
 
-
-
-//    visualization_msgs::Marker line_list;
-//    line_list.type = visualization_msgs::Marker::LINE_LIST;
-//    line_list.header.frame_id = "/my_frame";
-//    line_list.header.stamp = ros::Time::now();
-//    line_list.ns = "points_and_lines";
-//    line_list.action = visualization_msgs::Marker::ADD;
-//    line_list.pose.orientation.w = 1.0;
-//    //line_list.id = 2;
-
-//    line_list.scale.x = 0.05;
-
-
-//    line_list.color.r = 1.0;
-//    line_list.color.a = 1.0;
-
-//    // Create the vertices for the points and lines
-//    for (uint32_t i = 0; i < 100; ++i)
-//    {
-//      float y = i;//5 * sin(f + i / 100.0f * 2 * M_PI);
-//      float z = 0;//5 * cos(f + i / 100.0f * 2 * M_PI);
-
-//      geometry_msgs::Point p;
-//      p.x = i;
-//      p.y = y;
-//      p.z = z;
-
-////      // The line list needs two points for each line
-//      line_list.points.push_back(p);
-//      p.x += linePieceSize;
-//      line_list.points.push_back(p);
-//    }
-
-//    linePub.publish(line_list);
-
   }
+
   else{
     //@ToDoSave into file
   }
 
 
-
   // Publish the data.
-  //pub.publish (output);
-  f += 0.04;
+  pub.publish (output);
+
 }
 
 
