@@ -69,9 +69,10 @@ void PCColumnHandler(const sensor_msgs::PointCloud2ConstPtr& input){
 //  pcl::ConditionAnd<pcl::PointXYZ>::Ptr range_cond (new pcl::ConditionAnd<pcl::PointXYZ>);
 //  range_cond->addComparison (pcl::FieldComparison<pcl::PointXYZ>::ConstPtr (new pcl::FieldComparison<pcl::PointXYZ> ("z", pcl::ComparisonOps::LT, -10.0)));
 
-  //numberOfLines = (int) (abs((int)cloud_filtered[0].x) + abs((int)cloud_filtered[cloud_filtered.width-1].x))/linePieceSize;
 
-  //LineRow* TempRow =  new LineRow(numberOfLines, density, maxDifference);
+  numberOfLines = (int) (abs((int)cloud_filtered[0].x) + abs((int)cloud_filtered[cloud_filtered.width-1].x))/linePieceSize;
+
+  LineRow* TempRow =  new LineRow(numberOfLines, density, maxDifference);
   /*
   //Divide in defined pc pieces
   int i = 0;
@@ -101,68 +102,115 @@ void PCColumnHandler(const sensor_msgs::PointCloud2ConstPtr& input){
 
   */
   if(ISSIMUALTION){
-    /*
+
     //@ToDo Convert into line pieces an publish it.
 
-    visualization_msgs::Marker line_list;
-    line_list.type = visualization_msgs::Marker::LINE_LIST;
+    visualization_msgs::Marker line_list_bad;
+    visualization_msgs::Marker line_list_good;
+    visualization_msgs::Marker line_list_possible;
+    line_list_bad.type = line_list_good.type = line_list_possible.type = visualization_msgs::Marker::LINE_LIST;
 
-    line_list.scale.x = linePieceSize;
+    line_list_bad.header.frame_id = line_list_possible.header.frame_id =  line_list_good.header.frame_id = "/my_frame";
+    line_list_bad.header.stamp = line_list_possible.header.stamp = line_list_good.header.stamp = ros::Time::now();
+    line_list_bad.ns = line_list_possible.ns =line_list_good.ns = "points_and_lines";
+    line_list_bad.action = line_list_possible.action =line_list_good.action =visualization_msgs::Marker::ADD;
+    line_list_bad.pose.orientation.w = line_list_possible.pose.orientation.w =  line_list_good.pose.orientation.w = 1.0;
+    line_list_bad.id = 0;
+    line_list_possible.id = 1;
+    line_list_good.id = 2;
+
+
+    line_list_bad.scale.x = 0.05; // Set width of line
+    line_list_possible.scale.x = 0.05;
+    line_list_good.scale.x = 0.05;
 
     // Line list is red
-    line_list.color.r = 1.0;
-    line_list.color.a = 1.0;
+    line_list_bad.color.r = 1.0;
+    line_list_bad.color.a = 1.0;
+
+    // Make possible orange
+    line_list_possible.color.r = 0.5;
+    line_list_possible.color.g = 0.5;
+    line_list_possible.color.a = 1.0;
+
+    // Make good Lines green
+    line_list_good.color.g = 1.0f;
+    line_list_good.color.a = 1.0;
     line_p tempArray = TempRow->getRowArray();
 
     geometry_msgs::Point p;
     p.z = 0;
     for(int i = 0; i < TempRow->getSize(); i++){
+      if(i%3 == 0){
+        p.x = i; //tempArray[i].x;
+        p.y =5.0; //tempArray[i].q;
+
+        line_list_possible.points.push_back(p);
+        p.x = i + linePieceSize;//tempArray[i].x + linePieceSize;
+        p.y = 10.0; //tempArray[i].q + linePieceSize * tempArray[i].m;
+        line_list_possible.points.push_back(p);
+      }
+      if(i%2 == 0){
+        p.x = i; //tempArray[i].x;
+        p.y =5.0; //tempArray[i].q;
+
+        line_list_good.points.push_back(p);
+        p.x = i + linePieceSize;//tempArray[i].x + linePieceSize;
+        p.y = 10.0; //tempArray[i].q + linePieceSize * tempArray[i].m;
+        line_list_good.points.push_back(p);
+
+      }
+      else{
       p.x = i; //tempArray[i].x;
-      p.y = 0; //tempArray[i].q;
+      p.y =5.0; //tempArray[i].q;
 
-      line_list.points.push_back(p);
-      p.x = i + 1;//tempArray[i].x + linePieceSize;
-      p.y = 2; //tempArray[i].q + linePieceSize * tempArray[i].m;
-      line_list.points.push_back(p);
+      line_list_bad.points.push_back(p);
+      p.x = i + linePieceSize;//tempArray[i].x + linePieceSize;
+      p.y = 10.0; //tempArray[i].q + linePieceSize * tempArray[i].m;
+      line_list_bad.points.push_back(p);
+      }
     }
 
 
-    linePub.publish(line_list);
-    */
+    linePub.publish(line_list_bad);
+    linePub.publish(line_list_possible);
+    linePub.publish(line_list_good);
 
 
-    visualization_msgs::Marker line_list;
-    line_list.type = visualization_msgs::Marker::LINE_LIST;
-    line_list.header.frame_id = "/my_frame";
-    line_list.header.stamp = ros::Time::now();
-    line_list.ns = "points_and_lines";
-    line_list.action = visualization_msgs::Marker::ADD;
-    //line_list.pose.orientation.w = 1.0;
-    //line_list.id = 2;
 
-    line_list.scale.x = linePieceSize;
+//    visualization_msgs::Marker line_list;
+//    line_list.type = visualization_msgs::Marker::LINE_LIST;
+//    line_list.header.frame_id = "/my_frame";
+//    line_list.header.stamp = ros::Time::now();
+//    line_list.ns = "points_and_lines";
+//    line_list.action = visualization_msgs::Marker::ADD;
+//    line_list.pose.orientation.w = 1.0;
+//    //line_list.id = 2;
 
-    line_list.color.r = 1.0;
-    line_list.color.a = 1.0;
+//    line_list.scale.x = 0.05;
 
-    // Create the vertices for the points and lines
-    for (uint32_t i = 0; i < 100; ++i)
-    {
-      float y = 5 * sin(f + i / 100.0f * 2 * M_PI);
-      float z = 0;//5 * cos(f + i / 100.0f * 2 * M_PI);
 
-      geometry_msgs::Point p;
-      p.x = (int32_t)i - 50;
-      p.y = y;
-      p.z = z;
+//    line_list.color.r = 1.0;
+//    line_list.color.a = 1.0;
 
-//      // The line list needs two points for each line
-      line_list.points.push_back(p);
-      p.x += linePieceSize;
-      line_list.points.push_back(p);
-    }
+//    // Create the vertices for the points and lines
+//    for (uint32_t i = 0; i < 100; ++i)
+//    {
+//      float y = i;//5 * sin(f + i / 100.0f * 2 * M_PI);
+//      float z = 0;//5 * cos(f + i / 100.0f * 2 * M_PI);
 
-    linePub.publish(line_list);
+//      geometry_msgs::Point p;
+//      p.x = i;
+//      p.y = y;
+//      p.z = z;
+
+////      // The line list needs two points for each line
+//      line_list.points.push_back(p);
+//      p.x += linePieceSize;
+//      line_list.points.push_back(p);
+//    }
+
+//    linePub.publish(line_list);
 
   }
   else{
