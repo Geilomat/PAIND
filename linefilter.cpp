@@ -37,10 +37,13 @@ typedef struct line{
 typedef line_t* line_p;
 
 
-float linePieceSize = 5.0;    //Size for one piece = 1m
-float maxDifference = 20;      //Max Difference which is accepted bevor a staff etc. is detected.
-int density = 50;            //points per 1 meter
+float linePieceSize = 1.0;      //Size for one piece = 1m
+float maxDifference = 2;       //Max Difference which is accepted bevor a staff etc. is detected.
+int density = 20;               //min points per 1 meter
+int minValue = 50;              //min value which each line needs to have to be considered as good
+
 int numberOfLines;
+
 
 ros::Publisher pub;
 ros::Publisher linePub;       //Publisher for the lineCloumn
@@ -58,6 +61,7 @@ void PCColumnHandler(const sensor_msgs::PointCloud2ConstPtr& input){
 //  pcl::PCLPointCloud2* cloud = new pcl::PCLPointCloud2;
 //  pcl::PCLPointCloud2ConstPtr cloudPtr(cloud);
   pcl::PointCloud<pcl::PointXYZ> cloud_filtered;
+  cloud_filtered.header.frame_id ="VUX-1";
   pcl::PointCloud<pcl::PointXYZ> cloud_filteredConditional;
 
   // Covert to PCL data type
@@ -79,7 +83,7 @@ void PCColumnHandler(const sensor_msgs::PointCloud2ConstPtr& input){
 //  range_cond->addComparison (pcl::FieldComparison<pcl::PointXYZ>::ConstPtr (new pcl::FieldComparison<pcl::PointXYZ> ("z", pcl::ComparisonOps::LT, -10.0)));
 
 
-  numberOfLines = (int) (abs((int)cloud_filtered[0].x) + abs((int)cloud_filtered[cloud_filtered.width-1].x))/linePieceSize + 1;
+  numberOfLines = (int) (abs((int)cloud_filtered[0].x) + abs((int)cloud_filtered[cloud_filtered.width-1].x))/linePieceSize;
 
   //LineRow* TempRow (new LineRow(numberOfLines, density, maxDifference));
 
@@ -89,58 +93,70 @@ void PCColumnHandler(const sensor_msgs::PointCloud2ConstPtr& input){
 
   int i = 0;
   int lineArrayIterator = 0;
-  while(!(((int)cloud_filtered[i].x)%1 < 0.01 && ((int)cloud_filtered[i].x)%1 > -0.01)){ // Determinate the start point +- 1cm
+  while(!(((int)cloud_filtered[i].x)%1 < 0.1 && ((int)cloud_filtered[i].x)%1 > -0.1)){ // Determinate the start point +- 1cm
     i ++;
   }
+  //int end = i;
+  int pos = (int) cloud_filtered[i].x;
 
   do{
     int start = i;
-    float xstart = cloud_filtered[i].x;
+
+    float xstart = pos;
 
 
-  while(cloud_filtered[i].x < (xstart + linePieceSize) && i < (cloud_filtered.width-1)){
+  while((cloud_filtered[i].x < (pos + linePieceSize)) && (i < (cloud_filtered.width-1))){
     i ++;
   }
-    int end = i;
+    int end = i -1;
 
-    int x = (int) cloud_filtered[start].x;
+
+    int x = pos;
+    pos = pos + (int) linePieceSize;
+
     int value = 0;
-    float q = 0;
-    float m = 0;
-    float r = 0;
-    int size = abs(end - start);
+    double q;
+    double m;
+    float r;
+    int size = abs(end - start)+1;
 
     if(size < density){ // if the densitiy is too small
       value = -1;
+      q = 0.0;
+      m = 0.0;
+      r = 0.0;
     }
     else{ // From here on good
 
-      float xMean = 0;
-      float yMean = 0;
+      double xMeanNum = 0.0;
+      double yMeanNum = 0.0;
 
       for(int i = start; i <= end;i++){
-        xMean += cloud_filtered[i].x;
-        yMean += cloud_filtered[i].y;
+        xMeanNum += cloud_filtered[i].x - xstart;
+        yMeanNum += cloud_filtered[i].y;
       }
 
-      xMean = xMean/size;
-      yMean = yMean/size;
+      double xMean = xMeanNum/((float)size);
+      double yMean = yMeanNum/((float)size);
 
-      float numerator = 0;
-      float denumerator = 0;
+      double numerator = 0.0;
+      double denumerator = 0.0;
 
       for(int i = start; i <= end; i++){
-        numerator += (cloud_filtered[i].x-xMean)*(cloud_filtered[i].y - yMean);
-        denumerator += cloud_filtered[i].x * cloud_filtered[i].x;
+        numerator += (cloud_filtered[i].x -xstart - xMean)*(cloud_filtered[i].y - yMean);//cloud_filtered[i].x*cloud_filtered[i].y;
+        denumerator += (cloud_filtered[i].x -xstart - xMean)*(cloud_filtered[i].x -xstart - xMean);//cloud_filtered[i].x * cloud_filtered[i].x;
       }
 
-      m = numerator/(denumerator * size * xMean * yMean);
-      q = yMean - m*xMean;
+      m = numerator/denumerator;
 
-      r = 0;
+
+      q = yMean - (m*xMean);
+
+
       int counter = 0;
+      r = 0.0;
       for(int i = start ; i <= size; i++){
-        float onePointError = m * cloud_filtered[i].x + q - cloud_filtered[i].y;
+        float onePointError = m * cloud_filtered[i].x -xstart + q - cloud_filtered[i].y;
 
         if(abs((int)onePointError) > maxDifference){  //Test if the Error is greater then the maximal acepted Difference
           counter ++;
@@ -151,8 +167,15 @@ void PCColumnHandler(const sensor_msgs::PointCloud2ConstPtr& input){
       if(counter > 2){ //If there are too much height difference in more then one point -> probebly a staff or something
         value = -1;
       }
+      else{
+        //@ToDO value funktion z bsp.
+        value = r + m*10;
+      }
 
     }
+    std::cout << "x: " <<x<<" m: "<< m <<" q: "<<q <<" r: " <<r << endl;
+    std::cout <<"xstart:" << xstart <<" size:" << size <<" numberOfLines:" <<numberOfLines<< " lineArrayIterator: "<<lineArrayIterator <<endl;
+
 
     //Save calculated values int the Array
     lineArray[lineArrayIterator].x = x;
@@ -162,16 +185,10 @@ void PCColumnHandler(const sensor_msgs::PointCloud2ConstPtr& input){
     lineArray[lineArrayIterator].value = value;
 
     lineArrayIterator ++;
-//    if(lineArrayIterator == numberOfLines ){
-//      break;
-//    }
-
-
-  //TempRow->setNewLine(tempCloud,xstart);  //Make a new line with the given PC piece
   }
   while(lineArrayIterator < numberOfLines);
 
-  //pcl::PointXYZ begin = cloud_filtered[i];
+
   //detemate if this is a Simulation -> publish lines, else store the made object into the data
 
 
@@ -191,7 +208,7 @@ void PCColumnHandler(const sensor_msgs::PointCloud2ConstPtr& input){
     //pcl_conversions::fromPCL(cloud_filtered, output);
     //pcl::toROSMsg(cloud_filteredConditional,output);
 
-    line_list_bad.header.frame_id = line_list_possible.header.frame_id =  line_list_good.header.frame_id = "/my_frame";
+    line_list_bad.header.frame_id = line_list_possible.header.frame_id =  line_list_good.header.frame_id = "VUX-1";
     line_list_bad.header.stamp = line_list_possible.header.stamp = line_list_good.header.stamp = ros::Time::now();
     line_list_bad.ns = line_list_possible.ns =line_list_good.ns = "points_and_lines";
     line_list_bad.action = line_list_possible.action =line_list_good.action =visualization_msgs::Marker::ADD;
@@ -233,7 +250,7 @@ void PCColumnHandler(const sensor_msgs::PointCloud2ConstPtr& input){
       p.y = lineArray[i].q + lineArray[i].m * linePieceSize;
       line_list_bad.points.push_back(p);
     }
-    else if(lineArray[i].r >= 100){
+    else if(lineArray[i].value >= 20){
       p.x = lineArray[i].x;
       p.y = lineArray[i].q;
       line_list_possible.points.push_back(p);
