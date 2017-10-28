@@ -38,8 +38,8 @@ typedef line_t* line_p;
 
 
 float linePieceSize = 1.0;      //Size for one piece = 1m
-float maxDifference = 2;       //Max Difference which is accepted bevor a staff etc. is detected.
-int density = 20;               //min points per 1 meter
+float maxDifference = 1.5;      //Max Difference which is accepted bevor a staff etc. is detected.
+int densityPerM = 20;           //min points per 1 meter to be accepted into the rating
 int minValue = 50;              //min value which each line needs to have to be considered as good
 
 int numberOfLines;
@@ -57,15 +57,16 @@ void PCColumnHandler(const sensor_msgs::PointCloud2ConstPtr& input){
   // Do data processing here...
 
   // Container for original & filtered data
-  pcl::PointCloud<pcl::PointXYZ>::Ptr unfiltered_cloud (new pcl::PointCloud<pcl::PointXYZ>);
+  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_unfiltered (new pcl::PointCloud<pcl::PointXYZ>);
 //  pcl::PCLPointCloud2* cloud = new pcl::PCLPointCloud2;
 //  pcl::PCLPointCloud2ConstPtr cloudPtr(cloud);
+  pcl::PointCloud<pcl::PointXYZ> unfiltered_cloud;
   pcl::PointCloud<pcl::PointXYZ> cloud_filtered;
   cloud_filtered.header.frame_id ="VUX-1";
   pcl::PointCloud<pcl::PointXYZ> cloud_filteredConditional;
 
   // Covert to PCL data type
-  pcl::fromROSMsg(*input, cloud_filtered);
+  pcl::fromROSMsg(*input, *cloud_unfiltered);
 
   // Perform the filtering
 //  pcl::VoxelGrid<pcl::PointXYZ> sor;
@@ -73,17 +74,17 @@ void PCColumnHandler(const sensor_msgs::PointCloud2ConstPtr& input){
 //  sor.setLeafSize (0.1, 0.1,0);
 //  sor.setMinimumPointsNumberPerVoxel (200);
 //  sor.filter (cloud_filtered);
-//  pcl::RadiusOutlierRemoval<pcl::PointXYZ> filter (new pcl::RadiusOutlierRemoval<pcl::PointXYZ>);
-//  filter.setMinNeighborsInRadius(3);
-//  filter.setRadiusSearch(0.5);
-//  filter.setInputCloud(unfiltered_cloud);
-//  filter.filter(cloud_filtered);
+  pcl::RadiusOutlierRemoval<pcl::PointXYZ> filter (new pcl::RadiusOutlierRemoval<pcl::PointXYZ>);
+  filter.setMinNeighborsInRadius(3);
+  filter.setRadiusSearch(0.5);
+  filter.setInputCloud(cloud_unfiltered);
+  filter.filter(cloud_filtered);
 
 //  pcl::ConditionAnd<pcl::PointXYZ>::Ptr range_cond (new pcl::ConditionAnd<pcl::PointXYZ>);
 //  range_cond->addComparison (pcl::FieldComparison<pcl::PointXYZ>::ConstPtr (new pcl::FieldComparison<pcl::PointXYZ> ("z", pcl::ComparisonOps::LT, -10.0)));
 
 
-  numberOfLines = (int) (abs((int)cloud_filtered[0].x) + abs((int)cloud_filtered[cloud_filtered.width-1].x))/linePieceSize;
+  numberOfLines = (int) (abs(cloud_filtered[0].x) + abs(cloud_filtered[cloud_filtered.width-1].x))/linePieceSize;
 
   //LineRow* TempRow (new LineRow(numberOfLines, density, maxDifference));
 
@@ -120,7 +121,7 @@ void PCColumnHandler(const sensor_msgs::PointCloud2ConstPtr& input){
     float r;
     int size = abs(end - start)+1;
 
-    if(size < density){ // if the densitiy is too small
+    if(size < (densityPerM/(int)linePieceSize)){ // if the densitiy is too small
       value = -1;
       q = 0.0;
       m = 0.0;
@@ -155,13 +156,14 @@ void PCColumnHandler(const sensor_msgs::PointCloud2ConstPtr& input){
 
       int counter = 0;
       r = 0.0;
-      for(int i = start ; i <= size; i++){
-        float onePointError = m * cloud_filtered[i].x -xstart + q - cloud_filtered[i].y;
+      for(int i = start ; i <= end; i++){
+        float onePointError = abs((m * (cloud_filtered[i].x -xstart) + q - cloud_filtered[i].y));
 
-        if(abs((int)onePointError) > maxDifference){  //Test if the Error is greater then the maximal acepted Difference
+        if(onePointError > maxDifference){  //Test if the Error is greater then the maximal acepted Difference
           counter ++;
         }
         r += onePointError;
+        //std::cout << "onePointError:" << onePointError << endl;
       }
 
       if(counter > 2){ //If there are too much height difference in more then one point -> probebly a staff or something
@@ -169,11 +171,12 @@ void PCColumnHandler(const sensor_msgs::PointCloud2ConstPtr& input){
       }
       else{
         //@ToDO value funktion z bsp.
-        value = r + m*10;
+        // if m > |0.33| value should be enough small to count as bad
+        value = 1000 - (r*100 + abs((int)(m*1500))); //So it dosn't become a negative value if m is negatve. M is in percent.
       }
 
     }
-    std::cout << "x: " <<x<<" m: "<< m <<" q: "<<q <<" r: " <<r << endl;
+    std::cout << "x: " <<x<<" m: "<< m <<" q: "<<q <<" r: " <<r << " value: " << value <<endl;
     std::cout <<"xstart:" << xstart <<" size:" << size <<" numberOfLines:" <<numberOfLines<< " lineArrayIterator: "<<lineArrayIterator <<endl;
 
 
@@ -218,9 +221,9 @@ void PCColumnHandler(const sensor_msgs::PointCloud2ConstPtr& input){
     line_list_good.id = 2;
 
 
-    line_list_bad.scale.x = 0.05; // Set width of line
-    line_list_possible.scale.x = 0.05;
-    line_list_good.scale.x = 0.05;
+    line_list_bad.scale.x = 0.15; // Set width of line
+    line_list_possible.scale.x = 0.15;
+    line_list_good.scale.x = 0.15;
 
     // Line list is red
     line_list_bad.color.r = 1.0;
@@ -241,7 +244,7 @@ void PCColumnHandler(const sensor_msgs::PointCloud2ConstPtr& input){
 
     for(int i = 0; i < numberOfLines; i++){
 
-    if(lineArray[i].value == -1){
+    if(lineArray[i].value == -1 || lineArray[i].value < 500){
       p.x = lineArray[i].x;
       p.y = lineArray[i].q;
       line_list_bad.points.push_back(p);
@@ -250,23 +253,23 @@ void PCColumnHandler(const sensor_msgs::PointCloud2ConstPtr& input){
       p.y = lineArray[i].q + lineArray[i].m * linePieceSize;
       line_list_bad.points.push_back(p);
     }
-    else if(lineArray[i].value >= 20){
+    else if(lineArray[i].value >= 700){
       p.x = lineArray[i].x;
       p.y = lineArray[i].q;
-      line_list_possible.points.push_back(p);
+      line_list_good.points.push_back(p);
 
       p.x = lineArray[i].x + linePieceSize;
       p.y = lineArray[i].q + lineArray[i].m * linePieceSize;
-      line_list_possible.points.push_back(p);
+      line_list_good.points.push_back(p);
     }
     else{
       p.x = lineArray[i].x;
       p.y = lineArray[i].q;
-      line_list_good.points.push_back(p);
+      line_list_possible.points.push_back(p);
 
       p.x = lineArray[i].x + linePieceSize;
       p.y = lineArray[i].q + lineArray[i].m * linePieceSize;
-      line_list_good.points.push_back(p);
+      line_list_possible.points.push_back(p);
     }
     }
 
