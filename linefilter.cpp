@@ -55,16 +55,16 @@ typedef struct possibleLandingSides{
 typedef possibleLandingSides_t* possibleLandingSides_p;
     
 
-#define IS_SIMULATION 2          //define if this is a simulation or runnning on real time
+#define IS_SIMULATION 1          //define if this is a simulation or runnning on real time
 #define NUMBER_OF_POSSIBLE_LANDING_SIDES 10 //# of possible landing sides which shoulde be stored
 
 possibleLandingSides_p posLandingSideArray; //Array where the possible landing sides are stored;
-lineRow_p lineRowArray;         //Array of the scanned lines is handled as ringbuffer.
+lineRow_p* lineRowArray;         //Array of the scanned lines is handled as ringbuffer.
 float currentSpeed = 5.0;       //Current speed of the Drone needs to be updated.
 float linePieceSize = 1.0;      //Size for one piece = 1m
 float maxDifference = 1.5;      //Max Difference which is accepted bevor a staff etc. is detected.
-int densityPerM = 20;           //min points per 1 meter to be accepted into the rating
-int minValue = 50;              //min value which each line needs to have to be considered as good
+int densityPerM = 15;           //min points per 1 meter to be accepted into the rating
+int minValue = 500;              //min value which each line needs to have to be considered as good
 int sizeOfRowArray = 1000;      //size of the Row Array equals the amount of Rows which are looked back to finde landing planes
 
 int numberOfLines;
@@ -79,10 +79,10 @@ void handleLines(lineRow_p lineRow){
    static int lineRowArrayIndexerStart = 0;
    static int lineRowArrayIndexerEnd = 0;
 
-   lineRowArray[lineRowArrayIndexerEnd] = *lineRow;
+   lineRowArray[lineRowArrayIndexerEnd] = lineRow;
 
-   float aproxSpeed = (lineRowArray[lineRowArrayIndexerEnd].velocity +  lineRowArray[lineRowArrayIndexerStart].velocity)/2;
-   float distanceStartEnd = (lineRowArray[lineRowArrayIndexerEnd].timestamp.toSec() - lineRowArray[lineRowArrayIndexerStart].timestamp.toSec())*aproxSpeed;
+   float aproxSpeed = (lineRowArray[lineRowArrayIndexerEnd]->velocity +  lineRowArray[lineRowArrayIndexerStart]->velocity)/2;
+   float distanceStartEnd = (lineRowArray[lineRowArrayIndexerEnd]->timestamp.toSec() - lineRowArray[lineRowArrayIndexerStart]->timestamp.toSec())*aproxSpeed;
    //If there are enough lines scaned do the computing to get emergency landing planes for example if there is a 10m long scan
    //if((lineRowArrayIndexerEnd - lineRowArrayIndexerStart) > sizeOfRowArray/2){
 
@@ -94,24 +94,24 @@ void handleLines(lineRow_p lineRow){
       int posLandingSidesCounter = 0;
       do{
         // Calculate the difference in hight bewtween the different lines.
-        float qDifference = abs(lineRowArray[lineRowArrayIndexerStart].LineRow[i].q - lineRowArray[lineRowArrayIndexerStart].LineRow[i+ 1].q);
+        float qDifference = abs(lineRowArray[lineRowArrayIndexerStart]->LineRow[i].q - lineRowArray[lineRowArrayIndexerStart]->LineRow[i+ 1].q);
         if(i > 1){
-          qDifference += abs(lineRowArray[lineRowArrayIndexerStart].LineRow[i-1].q - lineRowArray[lineRowArrayIndexerStart].LineRow[i].q);
+          qDifference += abs(lineRowArray[lineRowArrayIndexerStart]->LineRow[i-1].q - lineRowArray[lineRowArrayIndexerStart]->LineRow[i].q);
         }
 
 
 
-        if(lineRowArray[lineRowArrayIndexerStart].LineRow[i].value > 500 && qDifference < 1.0){
+        if(lineRowArray[lineRowArrayIndexerStart]->LineRow[i].value > minValue && qDifference < 1.0){
           posLineCounter ++;
           if(posLineCounter > (10/linePieceSize)){
-            possibleLandingSides[posLandingSidesCounter][0] = lineRowArray[lineRowArrayIndexerStart].LineRow[i].x;
+            possibleLandingSides[posLandingSidesCounter][0] = lineRowArray[lineRowArrayIndexerStart]->LineRow[i].x;
             possibleLandingSides[posLandingSidesCounter][1] = i;
 #if (IS_SIMULATION == 2)
 
             std::cout << "possibleLandingsideDetected at: " << possibleLandingSides[posLandingSidesCounter][0] << endl;
 #endif
             posLandingSidesCounter ++;
-            while(lineRowArray[lineRowArrayIndexerStart].LineRow[i].value > 500) // This way a flat place counts as just one plane not multible ones
+            while(lineRowArray[lineRowArrayIndexerStart]->LineRow[i].value > minValue) // This way a flat place counts as just one plane not multible ones
             {
               i++;
             }
@@ -122,7 +122,7 @@ void handleLines(lineRow_p lineRow){
         }
         i++;
       }
-      while(i < lineRowArray[lineRowArrayIndexerStart].numberOfLines);
+      while(i < lineRowArray[lineRowArrayIndexerStart]->numberOfLines);
 #if (IS_SIMULATION != 1)
       // Check if there are possible landingsides which can be computed
       if(posLandingSidesCounter > 0){
@@ -130,9 +130,61 @@ void handleLines(lineRow_p lineRow){
         i = 0;
         do{
           int indexer = 0;
-          while(lineRowArray[lineRowArrayIndexerStart].LineRow[possibleLandingSides[i][1]+indexer].value > 500){
+          int upLinesChecker = 0;
+          int goodColumnsCounter = 0;
+          while(lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer].value > 500){
 
             //find the same line in the upper rows an check there values
+            upLinesChecker = 1;
+            for(int y = lineRowArrayIndexerStart + 1; y <= lineRowArrayIndexerEnd ; y++) //this loop iterates from the give start line upwards in lineRows of the lineRowArray
+            {
+              int j= 0;
+              while(lineRowArray[y]->LineRow[j].x != possibleLandingSides[i][0]) j++;  // find the line in the upper lineRow with the same x position as the one at the bottom of the Array;
+                  if(lineRowArray[y]->LineRow[j].value < minValue) upLinesChecker = 0;      // if the value from just one line is considered as bad.
+
+            }
+            if(upLinesChecker){ // if all upper lines were also good.
+              goodColumnsCounter ++;
+            }
+            else goodColumnsCounter = 0;
+
+            if(goodColumnsCounter >= (10/linePieceSize)){ //10 good Columns where detectet -> ah possible landing side
+              // publish here a possible landing field with the array of the lines -> value, time, speed etc.
+#if (IS_SIMULATION ==3)
+              std::cout <<"possible landingside detectet. Lower left corner at: " <<  lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer].x -10 << endl;
+              visualization_msgs::Marker line_list_good;
+              line_list_good.type = visualization_msgs::Marker::LINE_LIST;
+
+              line_list_good.header.frame_id = "VUX-1";
+              line_list_good.header.stamp = ros::Time::now();
+              line_list_good.ns = "points_and_lines";
+              line_list_good.action =visualization_msgs::Marker::ADD;
+              line_list_good.pose.orientation.w = 1.0;
+              line_list_good.id = 0;
+
+              // Set width of lines
+              line_list_good.scale.x = 0.15;
+
+
+              // Make good Lines green
+              line_list_good.color.g = 1.0f;
+              line_list_good.color.a = 1.0;
+
+              geometry_msgs::Point p;
+              p.z = 0;
+
+              p.x = lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer].x -10;
+              p.y = lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer].q;
+              line_list_good.points.push_back(p);
+
+              p.x = lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer].x;
+              line_list_good.points.push_back(p);
+
+              linePub.publish(line_list_good);
+
+#endif
+              goodColumnsCounter = 0;
+            }
 
 
             indexer++;
@@ -152,7 +204,7 @@ void handleLines(lineRow_p lineRow){
 
             std::cout << "trying to delet the older Entries" << endl;
 #endif
-#if (IS_SIMULATION != 2)
+#if (IS_SIMULATION != 1)
       if(lineRowArrayIndexerStart > lineRowArrayIndexerEnd){
         currentEntries = sizeOfRowArray - lineRowArrayIndexerStart + lineRowArrayIndexerEnd;
       }
@@ -160,14 +212,18 @@ void handleLines(lineRow_p lineRow){
         currentEntries = lineRowArrayIndexerEnd - lineRowArrayIndexerStart;
       }
       i = 0;
-      while(lineRowArrayIndexerStart <= currentEntries/2){ // Delet aprox halve of the entries
-        delete &(lineRowArray[lineRowArrayIndexerStart]);
-        lineRowArrayIndexerStart ++;
-        if(lineRowArrayIndexerStart == sizeOfRowArray){
+      while(i <=currentEntries/2){ // Delet aprox halve of the entries
+        delete lineRowArray[lineRowArrayIndexerStart + i];
+        i ++;
+        //lineRowArrayIndexerStart ++;
+        if(lineRowArrayIndexerStart + i == sizeOfRowArray){
           lineRowArrayIndexerStart = 0;
+          currentEntries - i*2;
+          i = 0;
         }
 
       }
+      lineRowArrayIndexerStart = lineRowArrayIndexerStart + i;
 #endif
 
    }
@@ -211,14 +267,17 @@ void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
   filter.filter(cloud_filtered);
 
 //  pcl::ConditionAnd<pcl::PointXYZ>::Ptr range_cond (new pcl::ConditionAnd<pcl::PointXYZ>);
-//  range_cond->addComparison (pcl::FieldComparison<pcl::PointXYZ>::ConstPtr (new pcl::FieldComparison<pcl::PointXYZ> ("z", pcl::ComparisonOps::LT, -10.0)));
-
+//  range_cond->addComparison (pcl::FieldComparison<pcl::PointXYZ>::ConstPtr (new pcl::FieldComparison<pcl::PointXYZ> ("y", pcl::ComparisonOps::LT, -5.0)));
+//  range_cond.
   //Calculate the size of the lineArray which will be computet depending on x position of first and last entry of the given PC.
 
   numberOfLines = (int) (abs(cloud_filtered[0].x) + abs(cloud_filtered[cloud_filtered.width-1].x))/linePieceSize;
 
+#if (IS_SIMULATION ==1)
   line_p lineArray (new line_t[numberOfLines]);
-
+#else
+  line_p lineArray = new line_t[numberOfLines];
+#endif
   //Divide in defined pc pieces and convert them into line pieces
 
   int i = 0;
@@ -368,7 +427,7 @@ void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
 
     for(int i = 0; i < numberOfLines; i++){
 
-    if(lineArray[i].value == -1 || lineArray[i].value < 500){
+    if(lineArray[i].value == -1 || lineArray[i].value < minValue){
       p.x = lineArray[i].x;
       p.y = lineArray[i].q;
       line_list_bad.points.push_back(p);
@@ -472,7 +531,7 @@ int main(int argc, char **argv)
   pub = n.advertise<sensor_msgs::PointCloud2> ("filtered_cloud_from_linefilter", 1);
   linePub = n.advertise<visualization_msgs::Marker>("filteredRowinLines", 1);
 
-  lineRowArray = new lineRow_t[sizeOfRowArray];
+  lineRowArray = new lineRow_p[sizeOfRowArray];
   
   
   /**
