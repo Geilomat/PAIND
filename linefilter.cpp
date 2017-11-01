@@ -18,6 +18,7 @@ using namespace std;
 #include <pcl_ros/point_cloud.h>
 #include <pcl/filters/radius_outlier_removal.h>
 #include <pcl/filters/conditional_removal.h>
+#include <pcl/filters/passthrough.h>
 
 #include <pcl-1.7/pcl/io/pcd_io.h>
 
@@ -55,7 +56,7 @@ typedef struct possibleLandingSides{
 typedef possibleLandingSides_t* possibleLandingSides_p;
     
 
-#define IS_SIMULATION 1          //define if this is a simulation or runnning on real time
+#define IS_SIMULATION 3          //define if this is a simulation or runnning on real time
 #define NUMBER_OF_POSSIBLE_LANDING_SIDES 10 //# of possible landing sides which shoulde be stored
 
 possibleLandingSides_p posLandingSideArray; //Array where the possible landing sides are stored;
@@ -154,7 +155,7 @@ void handleLines(lineRow_p lineRow){
               std::cout <<"possible landingside detectet. Lower left corner at: " <<  lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer].x -10 << endl;
               visualization_msgs::Marker line_list_good;
               line_list_good.type = visualization_msgs::Marker::LINE_LIST;
-
+              line_list_good.lifetime = ros::Duration(2,0);
               line_list_good.header.frame_id = "VUX-1";
               line_list_good.header.stamp = ros::Time::now();
               line_list_good.ns = "points_and_lines";
@@ -163,7 +164,7 @@ void handleLines(lineRow_p lineRow){
               line_list_good.id = 0;
 
               // Set width of lines
-              line_list_good.scale.x = 0.15;
+              line_list_good.scale.x = 0.5;
 
 
               // Make good Lines green
@@ -249,7 +250,7 @@ void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
 //  pcl::PCLPointCloud2ConstPtr cloudPtr(cloud);
   pcl::PointCloud<pcl::PointXYZ> cloud_filtered;
   cloud_filtered.header.frame_id ="VUX-1";
-  pcl::PointCloud<pcl::PointXYZ> cloud_filteredConditional;
+  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_filteredConditional (new pcl::PointCloud<pcl::PointXYZ>);
 
   // Covert to PCL data type
   pcl::fromROSMsg(*input, *cloud_unfiltered);
@@ -260,11 +261,19 @@ void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
 //  sor.setLeafSize (0.1, 0.1,0);
 //  sor.setMinimumPointsNumberPerVoxel (200);
 //  sor.filter (cloud_filtered);
+  pcl::PassThrough<pcl::PointXYZ> ptfilter (new pcl::PassThrough<pcl::PointXYZ>); // Initializing with true will allow us to extract the removed indices
+  ptfilter.setInputCloud(cloud_unfiltered);
+  ptfilter.setFilterFieldName ("y");
+  ptfilter.setFilterLimits (-1000.0, -2.0);
+  ptfilter.filter(*cloud_filteredConditional);
+
   pcl::RadiusOutlierRemoval<pcl::PointXYZ> filter (new pcl::RadiusOutlierRemoval<pcl::PointXYZ>);
   filter.setMinNeighborsInRadius(3);
   filter.setRadiusSearch(0.5);
-  filter.setInputCloud(cloud_unfiltered);
+  filter.setInputCloud(cloud_filteredConditional);
   filter.filter(cloud_filtered);
+
+
 
 //  pcl::ConditionAnd<pcl::PointXYZ>::Ptr range_cond (new pcl::ConditionAnd<pcl::PointXYZ>);
 //  range_cond->addComparison (pcl::FieldComparison<pcl::PointXYZ>::ConstPtr (new pcl::FieldComparison<pcl::PointXYZ> ("y", pcl::ComparisonOps::LT, -5.0)));
@@ -273,7 +282,9 @@ void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
 
   numberOfLines = (int) (abs(cloud_filtered[0].x) + abs(cloud_filtered[cloud_filtered.width-1].x))/linePieceSize;
 
+
 #if (IS_SIMULATION ==1)
+  std::cout << "X start:" << cloud_filtered[0].x << " X end:" << cloud_filtered[cloud_filtered.width-1].x << endl;
   line_p lineArray (new line_t[numberOfLines]);
 #else
   line_p lineArray = new line_t[numberOfLines];
@@ -349,15 +360,12 @@ void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
         float onePointError = abs((m * (cloud_filtered[i].x -xstart) + q - cloud_filtered[i].y));
 
         if(onePointError > maxDifference){  //Test if the Error is greater then the maximal axepted Difference
-          counter ++;
+          value = -1;  //If there are too much height difference in more then one point -> probebly a staff or something
         }
         r += onePointError;
       }
 
-      if(counter > 2){ //If there are too much height difference in more then one point -> probebly a staff or something
-        value = -1;
-      }
-      else{
+      if(value > -1){
         //@ToDO value funktion z bsp.
         value = 1000 - (r*100 + abs((int)(m*1500))); //So it dosn't become a negative value if m is negatve. M is in percent.
       }
