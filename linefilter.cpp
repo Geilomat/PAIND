@@ -63,8 +63,8 @@ possibleLandingSides_p posLandingSideArray; //Array where the possible landing s
 lineRow_p* lineRowArray;         //Array of the scanned lines is handled as ringbuffer.
 float currentSpeed = 5.0;       //Current speed of the Drone needs to be updated.
 float linePieceSize = 1.0;      //Size for one piece = 1m
-float maxDifference = 1.5;      //Max Difference which is accepted bevor a staff etc. is detected.
-int densityPerM = 15;           //min points per 1 meter to be accepted into the rating
+float maxDifference = 0.5;      //Max Difference which is accepted bevor a staff etc. is detected.
+int densityPerM = 10;           //min points per 1 meter to be accepted into the rating
 int minValue = 500;              //min value which each line needs to have to be considered as good
 int sizeOfRowArray = 1000;      //size of the Row Array equals the amount of Rows which are looked back to finde landing planes
 
@@ -88,6 +88,28 @@ void handleLines(lineRow_p lineRow){
    //if((lineRowArrayIndexerEnd - lineRowArrayIndexerStart) > sizeOfRowArray/2){
 
    if(distanceStartEnd > 10){ // If there are more then 10m of scanned plane
+
+#if(IS_SIMULATION == 3)
+
+     visualization_msgs::Marker line_list_good;
+     line_list_good.type = visualization_msgs::Marker::LINE_LIST;
+     line_list_good.lifetime = ros::Duration(2,0);
+     line_list_good.header.frame_id = "VUX-1";
+     line_list_good.header.stamp = ros::Time::now();
+     line_list_good.ns = "points_and_lines";
+     line_list_good.action =visualization_msgs::Marker::ADD;
+     line_list_good.pose.orientation.w = 1.0;
+     line_list_good.id = 0;
+
+     // Set width of lines
+     line_list_good.scale.x = 0.5;
+
+
+     // Make good Lines green
+     line_list_good.color.g = 1.0f;
+     line_list_good.color.a = 1.0;
+
+#endif
      //Array for the possible landing sides first entry is x value second is the index of the first lineRow = lineRowArrayIndexerStart
       int possibleLandingSides[20][2]; //Should be enough because there is about 150m which is scanned each row
       int posLineCounter = 0;
@@ -152,25 +174,8 @@ void handleLines(lineRow_p lineRow){
             if(goodColumnsCounter >= (10/linePieceSize)){ //10 good Columns where detectet -> ah possible landing side
               // publish here a possible landing field with the array of the lines -> value, time, speed etc.
 #if (IS_SIMULATION ==3)
+
               std::cout <<"possible landingside detectet. Lower left corner at: " <<  lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer].x -10 << endl;
-              visualization_msgs::Marker line_list_good;
-              line_list_good.type = visualization_msgs::Marker::LINE_LIST;
-              line_list_good.lifetime = ros::Duration(2,0);
-              line_list_good.header.frame_id = "VUX-1";
-              line_list_good.header.stamp = ros::Time::now();
-              line_list_good.ns = "points_and_lines";
-              line_list_good.action =visualization_msgs::Marker::ADD;
-              line_list_good.pose.orientation.w = 1.0;
-              line_list_good.id = 0;
-
-              // Set width of lines
-              line_list_good.scale.x = 0.5;
-
-
-              // Make good Lines green
-              line_list_good.color.g = 1.0f;
-              line_list_good.color.a = 1.0;
-
               geometry_msgs::Point p;
               p.z = 0;
 
@@ -181,7 +186,7 @@ void handleLines(lineRow_p lineRow){
               p.x = lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer].x;
               line_list_good.points.push_back(p);
 
-              linePub.publish(line_list_good);
+
 
 #endif
               goodColumnsCounter = 0;
@@ -196,7 +201,10 @@ void handleLines(lineRow_p lineRow){
       }
 #endif
 
+#if (IS_SIMULATION == 3)
+      linePub.publish(line_list_good);
 
+#endif
 
 
       //delete the oldest few entries
@@ -264,12 +272,12 @@ void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
   pcl::PassThrough<pcl::PointXYZ> ptfilter (new pcl::PassThrough<pcl::PointXYZ>); // Initializing with true will allow us to extract the removed indices
   ptfilter.setInputCloud(cloud_unfiltered);
   ptfilter.setFilterFieldName ("y");
-  ptfilter.setFilterLimits (-1000.0, -2.0);
+  ptfilter.setFilterLimits (-1000.0, -20.0);
   ptfilter.filter(*cloud_filteredConditional);
 
   pcl::RadiusOutlierRemoval<pcl::PointXYZ> filter (new pcl::RadiusOutlierRemoval<pcl::PointXYZ>);
-  filter.setMinNeighborsInRadius(3);
-  filter.setRadiusSearch(0.5);
+  filter.setMinNeighborsInRadius(1);
+  filter.setRadiusSearch(0.3);
   filter.setInputCloud(cloud_filteredConditional);
   filter.filter(cloud_filtered);
 
@@ -286,6 +294,7 @@ void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
 #if (IS_SIMULATION ==1)
   std::cout << "X start:" << cloud_filtered[0].x << " X end:" << cloud_filtered[cloud_filtered.width-1].x << endl;
   line_p lineArray (new line_t[numberOfLines]);
+
 #else
   line_p lineArray = new line_t[numberOfLines];
 #endif
@@ -483,6 +492,15 @@ void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
     calculatedRow->velocity = currentSpeed;  // current velocity of the drone
     calculatedRow->numberOfLines = numberOfLines;
     handleLines(calculatedRow);
+
+#if (IS_SIMULATION == 3)
+      sensor_msgs::PointCloud2 output;
+      output.header.frame_id = "VUX-1";
+      pcl::toROSMsg(cloud_filtered, output);
+      //std::cout << "Points per row:" << cloud_unfiltered->width << endl;
+
+      pub.publish(output);
+#endif
 
 #endif
 }
