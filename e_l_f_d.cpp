@@ -1,3 +1,4 @@
+
 #include <ros/ros.h>
 #include <iostream>
 #include <fstream>
@@ -19,7 +20,7 @@ using namespace std;
 #include <pcl/filters/radius_outlier_removal.h>
 #include <pcl/filters/conditional_removal.h>
 #include <pcl/filters/passthrough.h>
-
+#include <pcl_filter/LandingField.h>
 #include <pcl-1.7/pcl/io/pcd_io.h>
 #include "e_l_f_d.h"
 
@@ -29,7 +30,7 @@ using namespace std;
 
 
 
-possibleLandingSides_p posLandingSideArray; //Array where the possible landing sides are stored;
+possibleLandingField_p posLandingSideArray; //Array where the possible landing sides are stored;
 lineRow_p* lineRowArray;         //Array of the scanned lines is handled as ringbuffer.
 float currentSpeed = 5.0;       //Current speed of the Drone needs to be updated ! [mm]
 float linePieceSize = LINE_PIECE_SIZE;      //Size for one piece = 1m
@@ -39,21 +40,17 @@ int minValue = 500;              //min value which each line needs to have to be
 int sizeOfRowArray = 1000;      //size of the Row Array equals the amount of Rows which are looked back to finde landing planes
 
 int numberOfLines;
-
+int32_t voltageLinePositionX = 0xFFFFFFFF;
+int voltageLineXSize = VOLTAGE_LINE_SIZE;
 
 ros::Publisher pub;           //Publisher for the lineRow_p to safe it for later calculation of landing planes
 ros::Publisher linePub;       //Publisher for the lineCloumn to visualize it in rviz
-
+ros::Publisher possibleLandingFieldsPub; //publisher for possible landing fields
 
 
 
 
 static void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
-
-  // Create a container for the data.
-
-
-  // Do data processing here...
 
   // Container for original & filtered data
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_unfiltered (new pcl::PointCloud<pcl::PointXYZ>);
@@ -89,8 +86,8 @@ static void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
 //  pcl::ConditionAnd<pcl::PointXYZ>::Ptr range_cond (new pcl::ConditionAnd<pcl::PointXYZ>);
 //  range_cond->addComparison (pcl::FieldComparison<pcl::PointXYZ>::ConstPtr (new pcl::FieldComparison<pcl::PointXYZ> ("y", pcl::ComparisonOps::LT, -5.0)));
 //  range_cond.
-  //Calculate the size of the lineArray which will be computet depending on x position of first and last entry of the given PC.
 
+  //Calculate the size of the lineArray which will be computet depending on x position of first and last entry of the given PC.
   numberOfLines = (int) (abs(cloud_filtered[0].x) + abs(cloud_filtered[cloud_filtered.width-1].x))/linePieceSize;
 
 
@@ -131,6 +128,18 @@ static void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
     double m;
     float r;
     int size = abs(end - start)+1;
+
+    if(voltageLinePositionX == 0xFFFFFFFF){
+      std::cout << "DANGER \t !!! line tracking isn't working !!! \n It is possible that landing fields will be detected under the voltage line !!!" << endl;
+    }
+    else{   //check if the new line is under the voltage line -> make size = 0 => line will considerer as bad because of density
+      if((xstart > voltageLinePositionX-voltageLineXSize/2 && xstart < voltageLinePositionX+voltageLineXSize/2) ||
+         (pos > voltageLinePositionX-voltageLineXSize/2 && pos < voltageLinePositionX+voltageLineXSize/2)){
+        size = 0;
+      }
+
+    }
+
 
     if(size < (densityPerM/(int)linePieceSize)){ // if the densitiy is too small
       value = -1;
@@ -176,6 +185,7 @@ static void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
         }
         r += onePointError;
       }
+      r = r/size;
 
       if(value > -1){
         //@ToDO value funktion z bsp.
@@ -318,8 +328,6 @@ static void handleLines(lineRow_p lineRow){
 
    float aproxSpeed = (lineRowArray[lineRowArrayIndexerEnd]->velocity +  lineRowArray[lineRowArrayIndexerStart]->velocity)/2;
    float distanceStartEnd = (lineRowArray[lineRowArrayIndexerEnd]->timestamp.toSec() - lineRowArray[lineRowArrayIndexerStart]->timestamp.toSec())*aproxSpeed;
-   //If there are enough lines scaned do the computing to get emergency landing planes for example if there is a 10m long scan
-   //if((lineRowArrayIndexerEnd - lineRowArrayIndexerStart) > sizeOfRowArray/2){
 
    if(distanceStartEnd > 10){ // If there are more then 10m of scanned plane
 
@@ -389,24 +397,50 @@ static void handleLines(lineRow_p lineRow){
           int indexer = 0;
           int upLinesChecker = 0;
           int goodColumnsCounter = 0;
+          int landingFieldSize = 0;
+          int64_t landingFieldValue = 0;
+          ros::Time timestamp;
+          int64_t xCenterPos = 0xFFFFFFFFFFFFFFFF; //this way it can be safely detected if the variable was writen or not. (0xFFFFFFFFFFFFFFFF should never occur in a normal running programm)
           while(lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer].value > 500){
 
             //find the same line in the upper rows an check there values
             upLinesChecker = 1;
-            for(int y = lineRowArrayIndexerStart + 1; y <= lineRowArrayIndexerEnd ; y++) //this loop iterates from the give start line upwards in lineRows of the lineRowArray
+            for(int y = lineRowArrayIndexerStart + 1; y <= lineRowArrayIndexerEnd ; y++) //this loop iterates from the given start line upwards in lineRows of the lineRowArray
             {
               int j= 0;
-              while(lineRowArray[y]->LineRow[j].x != possibleLandingSides[i][0]) j++;  // find the line in the upper lineRow with the same x position as the one at the bottom of the Array;
-                  if(lineRowArray[y]->LineRow[j].value < minValue) upLinesChecker = 0;      // if the value from just one line is considered as bad.
-
+              while(lineRowArray[y]->LineRow[j].x != possibleLandingSides[i][0]) j++;   //find the line in the upper lineRow with the same x position as the one at the bottom of the Array;
+                  if(lineRowArray[y]->LineRow[j].value < minValue) upLinesChecker = 0;  // if the value from just one line is considered as bad.
+                  else{
+                    landingFieldSize ++;
+                    landingFieldValue += lineRowArray[y]->LineRow[j].value;
+                  }
             }
             if(upLinesChecker){ // if all upper lines were also good.
               goodColumnsCounter ++;
             }
-            else goodColumnsCounter = 0;
-
+            else{
+              landingFieldSize = 0;
+              landingFieldValue  = 0;
+              goodColumnsCounter = 0;
+              xCenterPos = 0xFFFFFFFFFFFFFFFF;}
+            if(goodColumnsCounter >= (5/linePieceSize) && xCenterPos == 0xFFFFFFFFFFFFFFFF){ //save the center of the Landing field
+              xCenterPos = lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer].x;
+            }
             if(goodColumnsCounter >= (10/linePieceSize)){ //10 good Columns where detectet -> ah possible landing side
               // publish here a possible landing field with the array of the lines -> value, time, speed etc.
+
+              //make a container for the LandingField and fill it with the right values:
+
+              pcl_filter::LandingField newPossLandField;
+
+
+              newPossLandField.value = landingFieldValue;
+              newPossLandField.xPos = xCenterPos;
+              possibleLandingFieldsPub.publish(newPossLandField);
+
+
+
+
 #if (IS_SIMULATION ==3)
 
               std::cout <<"possible landingside detectet. Lower left corner at: " <<  lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer].x -10 << endl;
@@ -478,6 +512,12 @@ static void handleLines(lineRow_p lineRow){
    }
 }
 
+static void updateVoltageLinePos(std_msgs::Int32 xDistance){
+   voltageLinePositionX = xDistance.data/100;
+}
+
+static void handleLandingFields(pcl_filter::LandingField landingField){
+}
 
 
 
@@ -520,12 +560,15 @@ int main(int argc, char **argv)
    */
 // %Tag(SUBSCRIBER)%
   ros::Subscriber sub = n.subscribe("point_cloud_unfiltered", 1, PCRowHandler);
+  ros::Subscriber sub2 = n.subscribe("line_distance",1,updateVoltageLinePos);
+  ros::Subscriber sub3 = n.subscribe("possLandingFields",1,handleLandingFields);
 // %EndTag(SUBSCRIBER)%
 
 
   // Create a ROS publisher for the output point cloud
   pub = n.advertise<sensor_msgs::PointCloud2> ("filtered_cloud_from_linefilter", 1);
   linePub = n.advertise<visualization_msgs::Marker>("filteredRowinLines", 1);
+  possibleLandingFieldsPub = n.advertise<pcl_filter::LandingField>("possLandingFields",1);
 
   lineRowArray = new lineRow_p[sizeOfRowArray];
 
