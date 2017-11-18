@@ -30,7 +30,7 @@ using namespace std;
 
 
 
-possibleLandingField_p* posLandingFieldArray; //Array where the possible landing sides are stored;
+//possibleLandingField_p* posLandingFieldArray; //Array where the possible landing sides are stored;
 lineRow_p* lineRowArray;         //Array of the scanned lines is handled as ringbuffer.
 float currentSpeed = 5.0;       //Current speed of the Drone needs to be updated ! [mm]
 int minValue = 500;              //min value which each line needs to have to be considered as good
@@ -178,7 +178,8 @@ static void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
       for(int i = start ; i <= end; i++){
         float onePointError = abs((m * (cloud_filtered[i].x -xstart) + q - cloud_filtered[i].y));
 
-        if(onePointError > MAX_ACCEPTED_DIFFERENCE){  //Test if the Error is greater then the maximal axepted Difference
+        if(onePointError > MAX_ACCEPTED_DIFFERENCE
+           ){  //Test if the Error is greater then the maximal axepted Difference
           value = -1;  //If there are too much height difference in more then one point -> probebly a staff or something
         }
         r += onePointError;
@@ -300,7 +301,7 @@ static void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
     lineRow_p calculatedRow = new lineRow_t;
     calculatedRow->LineRow = lineArray;
     calculatedRow->timestamp = ros::Time::now();        // maybe should done differently
-    calculatedRow->velocity = currentSpeed;  // current velocity of the drone
+    calculatedRow->velocity = currentSpeed;             // current velocity of the drone
     calculatedRow->numberOfLines = numberOfLines;
     handleLines(calculatedRow);
 
@@ -575,56 +576,6 @@ static void updateVelocity(std_msgs::Int32 newVelocity){
 }
 
 
-
-static void handleLandingFields(pcl_filter::LandingField landingField){
-  //create a container for the data and fill it
-
-  possibleLandingField_p inputLandingField = new possibleLandingField_t;
-  inputLandingField->initValue = landingField.value;
-  inputLandingField->value = landingField.value;
-  inputLandingField->velocity = landingField.velocity;
-  inputLandingField->xPos = landingField.xPos;
-  inputLandingField->time = landingField.timestamp;
-  inputLandingField->hight = landingField.hight;
-
-#if (IS_SIMULATION == 4 || IS_SIMULATION == 5)
-
-  std::cout << "LandingField recieved !! \n"
-              "value: " << inputLandingField->value <<
-              "\n xPos: " << inputLandingField->xPos <<
-              "\n time: " << inputLandingField->time <<
-              "\n velocity: " << inputLandingField->velocity <<
-              "\n hight: " << inputLandingField->hight << endl;
-
-#endif
-
-  //iterate trough the array and fing the right place for the given landingField.
-  int i = 0;
-
-  while(posLandingFieldArray[i]->value > inputLandingField->value){
-    i ++;
-    if(i >= NUMBER_OF_POSSIBLE_LANDING_FIELDS){
-      return;   //all landingFields current in the array are better then the one calculated
-    }
-  }
-  possibleLandingField_p tempLandingField;
-
-  tempLandingField = posLandingFieldArray[i];
-  posLandingFieldArray[i] = inputLandingField;
-  i++;
-  possibleLandingField_p tempLandingField2;
-
-  for(i ; i< NUMBER_OF_POSSIBLE_LANDING_FIELDS; i++){
-    tempLandingField2 = posLandingFieldArray[i];
-    posLandingFieldArray[i] = tempLandingField;
-  }
-
-}
-
-
-
-
-
 int main(int argc, char **argv)
 {
   /**
@@ -664,7 +615,7 @@ int main(int argc, char **argv)
 // %Tag(SUBSCRIBER)%
   ros::Subscriber sub = n.subscribe("point_cloud_unfiltered", 1, PCRowHandler);
   ros::Subscriber sub2 = n.subscribe("line_distance",1,updateVoltageLinePos);
-  ros::Subscriber sub3 = n.subscribe("possLandingFields",10,handleLandingFields);
+  //ros::Subscriber sub3 = n.subscribe("possLandingFields",10,handleLandingFields);
   //ros::Subscriber sub4 = n.subscribe("UAV_velocity",1,updateVelocity);
 // %EndTag(SUBSCRIBER)%
 
@@ -675,7 +626,6 @@ int main(int argc, char **argv)
   possibleLandingFieldsPub = n.advertise<pcl_filter::LandingField>("possLandingFields",1);
 
   lineRowArray = new lineRow_p[sizeOfRowArray];
-  posLandingFieldArray = new possibleLandingField_p[NUMBER_OF_POSSIBLE_LANDING_FIELDS];
 
   /**
    * ros::spin() will enter a loop, pumping callbacks.  With this version, all

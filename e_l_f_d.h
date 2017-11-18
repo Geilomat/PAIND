@@ -1,6 +1,9 @@
 #ifndef E_L_F_D_H
 #define E_L_F_D_H
 
+#include <pcl_filter/LandingField.h>
+#include <pcl_filter/LineRow.h>
+
 #define IS_SIMULATION 5                       //define if this is a simulation or runnning on real time
 #define NUMBER_OF_POSSIBLE_LANDING_FIELDS 10   //# of possible landing sides which shoulde be stored
 #define LINE_PIECE_SIZE 1.0                   //size of one line piece [m]
