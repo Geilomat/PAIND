@@ -30,61 +30,145 @@ using namespace std;
 
 
 
-possibleLandingField_p* posLandingFieldArray; //Array where the possible landing sides are stored;
+//possibleLandingField_p* posLandingFieldArray; //Array where the possible landing sides are stored;
+possibleLandingField_t posLandingFieldArray[NUMBER_OF_POSSIBLE_LANDING_FIELDS];
 float currentSpeed = 5.0;       //Current speed of the Drone needs to be updated ! [mm]
-int minValue = 500;              //min value which each line needs to have to be considered as good
+//int minValue = 500;              //min value which each line needs to have to be considered as good
+int currentEntries = 0;
 
 
 
 
 
 
-static void handleLandingFields(pcl_filter::LandingField landingField){
+static void addNewLandingField(pcl_filter::LandingField landingField){
   //create a container for the data and fill it
 
-  possibleLandingField_p inputLandingField = new possibleLandingField_t;
-  inputLandingField->initValue = landingField.value;
-  inputLandingField->value = landingField.value;
-  inputLandingField->velocity = landingField.velocity;
-  inputLandingField->xPos = landingField.xPos;
-  inputLandingField->time = landingField.timestamp;
-  inputLandingField->hight = landingField.hight;
 
-#if (IS_SIMULATION == 4 || IS_SIMULATION == 5)
-
+#if (IS_SIMULATION == 4)
   std::cout << "LandingField recieved !! \n"
-              "value: " << inputLandingField->value <<
-              "\n xPos: " << inputLandingField->xPos <<
-              "\n time: " << inputLandingField->time <<
-              "\n velocity: " << inputLandingField->velocity <<
-              "\n hight: " << inputLandingField->hight << endl;
-
+              "value: " << landingField.value <<
+              "\t xPos: " << landingField.xPos <<
+              "\t time: " << landingField.timestamp <<
+              "\t speed: " << landingField.velocity <<
+              "\t hight: " << landingField.hight << endl;
+  std::cout << "currentEntriesNewLine. " << currentEntries <<endl;
 #endif
 
-  //iterate trough the array and fing the right place for the given landingField.
-  int i = 0;
+  possibleLandingField_t inputLandingField;
+  inputLandingField.initValue = landingField.value;
+  inputLandingField.value = landingField.value;
+  inputLandingField.speed = landingField.velocity;
+  inputLandingField.xPos = landingField.xPos;
+  inputLandingField.time = landingField.timestamp;
+  inputLandingField.hight = landingField.hight;
 
-  while(posLandingFieldArray[i]->value > inputLandingField->value){
-    i ++;
-    if(i >= NUMBER_OF_POSSIBLE_LANDING_FIELDS){
-      return;   //all landingFields current in the array are better then the one calculated
+  //iterate trough the array and fing the right place for the given landingField.
+
+  if(currentEntries == 0){
+    posLandingFieldArray[0] = inputLandingField;
+    currentEntries ++;
+  }
+  else{
+    int i = 0;
+    // find the right place for the calculated landing Field.
+    while(i < currentEntries && posLandingFieldArray[i].value > inputLandingField.value ){
+      i ++;
+      if(i >= NUMBER_OF_POSSIBLE_LANDING_FIELDS){
+        //all landingFields current in the array are better then the one calculated
+        return;
+      }
+    }
+    if(i < currentEntries){
+      //put the inputLandingField into the right place:
+      possibleLandingField_t tempLandingField;
+      tempLandingField = posLandingFieldArray[i];
+      posLandingFieldArray[i] = inputLandingField;
+      i++;
+
+      //push the other entries deeper back into the Array
+      possibleLandingField_t tempLandingField2;
+
+      for(i ; i< currentEntries; i++){
+        tempLandingField2 = posLandingFieldArray[i];
+        posLandingFieldArray[i] = tempLandingField;
+        tempLandingField = tempLandingField2;
+      }
+      //if the end of the array is reached delet the last entry, otherwise put the last entry at the first free place an count the currentEntries up.
+      if(currentEntries < NUMBER_OF_POSSIBLE_LANDING_FIELDS){
+        posLandingFieldArray[currentEntries] = tempLandingField;
+        currentEntries ++;
+        }
+      }
+    else{
+      posLandingFieldArray[currentEntries] = inputLandingField;
+      currentEntries ++;
     }
   }
-  possibleLandingField_p tempLandingField;
-
-  tempLandingField = posLandingFieldArray[i];
-  posLandingFieldArray[i] = inputLandingField;
-  i++;
-  possibleLandingField_p tempLandingField2;
-
-  for(i ; i< NUMBER_OF_POSSIBLE_LANDING_FIELDS; i++){
-    tempLandingField2 = posLandingFieldArray[i];
-    posLandingFieldArray[i] = tempLandingField;
-  }
-
 }
 
 
+static void updateCurrentSpeed(std_msgs::Int32 newSpeed){
+  currentSpeed = newSpeed.data;
+}
+
+
+static void updateLandingFieldArray(const ros::TimerEvent& event){
+
+
+#if (IS_SIMULATION == 5)
+  //std::cout << "updateLandingFieldArray was called" << endl;
+    std::cout << "currentEntriesUpdate " << currentEntries <<endl;
+#endif
+  // Function is only needed if there are more then one landing field in the array
+  if(currentEntries > 1){
+    //Use forgettingfunction to give the entries new values
+    for(int i = 0; i<currentEntries ; i++){
+      int newValue = posLandingFieldArray[i].value - (currentEntries * 5 + currentSpeed * 2 + (MAX_VALUE - posLandingFieldArray[i].initValue)/10);
+      //posLandingFieldArray[i]->value -=  (currentEntries * 10 + currentSpeed * 5 + (MAX_VALUE - posLandingFieldArray[i]->initValue)/10);
+      if(newValue > MIN_VALUE && newValue < MAX_VALUE){
+        posLandingFieldArray[i].value = newValue;
+      }
+      else{
+        posLandingFieldArray[i].value = MIN_VALUE -1;
+      }
+
+    }
+    possibleLandingField_t tempLandingField;
+    //sort the Array and delet "bad" entries
+    int sorted = 0;
+    while(sorted < currentEntries-1){
+      for(int i = 0;i<currentEntries-1;i++){
+        if(posLandingFieldArray[i].value < posLandingFieldArray[i+1].value){
+          tempLandingField = posLandingFieldArray[i];
+          posLandingFieldArray[i] = posLandingFieldArray[i+1];
+        }
+        else{
+          sorted ++;
+        }
+      }
+
+    }
+    int i = currentEntries -1;
+    while(posLandingFieldArray[i].value < MIN_VALUE && i > 0){
+        posLandingFieldArray[i].value = 0; // fill pointer with NULL for saftey reasons
+        currentEntries --;
+        i --;
+    }
+  }
+#if (IS_SIMULATION > 0)
+  std::cout <<"posLandingFieldArray entries:" << endl;
+  for(int i= 0 ; i < currentEntries; i++){
+  std::cout <<"value: " << posLandingFieldArray[i].value <<
+              "\tinitValue: " << posLandingFieldArray[i].initValue<<
+              "\t xPos: " << posLandingFieldArray[i].xPos <<
+              "\t time: " << posLandingFieldArray[i].time <<
+              "\t velocity: " << posLandingFieldArray[i].speed <<
+              "\t hight: " << posLandingFieldArray[i].hight << endl;
+  }
+
+#endif
+}
 
 
 
@@ -108,7 +192,6 @@ int main(int argc, char **argv)
    * NodeHandle destructed will close down the node.
    */
   ros::NodeHandle n;
-
   /**
    * The subscribe() call is how you tell ROS that you want to receive messages
    * on a given topic.  This invokes a call to the ROS
@@ -125,13 +208,12 @@ int main(int argc, char **argv)
    * away the oldest ones.
    */
 // %Tag(SUBSCRIBER)%
-  ros::Subscriber sub3 = n.subscribe("possLandingFields",10,handleLandingFields);
+  ros::Subscriber sub = n.subscribe("possLandingFields",10,addNewLandingField);
   //ros::Subscriber sub4 = n.subscribe("UAV_velocity",1,updateVelocity);
 // %EndTag(SUBSCRIBER)%
-
-
+  ros::Timer timer = n.createTimer(ros::Duration(5),updateLandingFieldArray,false);
   // Create a ROS publisher for the output point cloud
-  posLandingFieldArray = new possibleLandingField_p[NUMBER_OF_POSSIBLE_LANDING_FIELDS];
+ // posLandingFieldArray = new possibleLandingField_p[NUMBER_OF_POSSIBLE_LANDING_FIELDS];
 
   /**
    * ros::spin() will enter a loop, pumping callbacks.  With this version, all
