@@ -47,6 +47,7 @@ ros::Publisher possibleLandingFieldsPub; //publisher for possible landing fields
 
 static void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
 
+  ros::Time timestamp  = ros::Time::now(); //get the actual time;
   // Container for original & filtered data
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_unfiltered (new pcl::PointCloud<pcl::PointXYZ>);
 //  pcl::PCLPointCloud2* cloud = new pcl::PCLPointCloud2;
@@ -75,13 +76,6 @@ static void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
   filter.setRadiusSearch(0.3);
   filter.setInputCloud(cloud_filteredConditional);
   filter.filter(cloud_filtered);
-
-
-
-//  pcl::ConditionAnd<pcl::PointXYZ>::Ptr range_cond (new pcl::ConditionAnd<pcl::PointXYZ>);
-//  range_cond->addComparison (pcl::FieldComparison<pcl::PointXYZ>::ConstPtr (new pcl::FieldComparison<pcl::PointXYZ> ("y", pcl::ComparisonOps::LT, -5.0)));
-//  range_cond.
-
 
   //Calculate the size of the lineArray which will be computet depending on x position of first and last entry of the given PC.
   int numberOfLines = (int) (abs(cloud_filtered[0].x) + abs(cloud_filtered[cloud_filtered.width-1].x))/LINE_PIECE_SIZE;
@@ -146,32 +140,45 @@ static void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
     else{
 
       //calculating the m and q value with the least square methode
-      double xMeanNum = 0.0;
-      double yMeanNum = 0.0;
+//      double xMeanNum = 0.0;
+//      double yMeanNum = 0.0;
 
-      for(int i = start; i <= end;i++){
-        xMeanNum += cloud_filtered[i].x - xstart; //this way everey x value of the array is treated as the line woud beginn at x = 0
-        yMeanNum += cloud_filtered[i].y;
+//      for(int i = start; i <= end;i++){
+//        xMeanNum += cloud_filtered[i].x - xstart; //this way every x value of the array is treated as the line woud beginn at x = 0
+//        yMeanNum += cloud_filtered[i].y;
+//      }
+
+//      double xMean = xMeanNum/((float)size);
+//      double yMean = yMeanNum/((float)size);
+
+//      double numerator = 0.0;
+//      double denumerator = 0.0;
+
+//      for(int i = start; i <= end; i++){
+//        numerator += (cloud_filtered[i].x -xstart - xMean)*(cloud_filtered[i].y - yMean);
+//        denumerator += (cloud_filtered[i].x -xstart - xMean)*(cloud_filtered[i].x -xstart - xMean);
+//      }
+      double xMean = 0.0;
+      double yMean = 0.0;
+      double xSquared = 0.0;
+      double xyMul = 0.0;
+
+      for(int i = start; i<=end; i++){
+        xMean += cloud_filtered[i].x - xstart; //this way every x value of the array is treated as the line woud beginn at x = 0
+        yMean += cloud_filtered[i].y;
+        xSquared += (cloud_filtered[i].x-xstart)*(cloud_filtered[i].x -xstart);
+        xyMul += (cloud_filtered[i].x - xstart) * cloud_filtered[i].y;
       }
 
-      double xMean = xMeanNum/((float)size);
-      double yMean = yMeanNum/((float)size);
+      xMean = xMean/((float)size);
+      yMean = yMean/((float)size);
+      m = (xyMul - (size*xMean*yMean))/(xSquared - (size*xMean*xMean));
 
-      double numerator = 0.0;
-      double denumerator = 0.0;
-
-      for(int i = start; i <= end; i++){
-        numerator += (cloud_filtered[i].x -xstart - xMean)*(cloud_filtered[i].y - yMean);
-        denumerator += (cloud_filtered[i].x -xstart - xMean)*(cloud_filtered[i].x -xstart - xMean);
-      }
-
-      m = numerator/denumerator;
-
+      //m = numerator/denumerator;
 
       q = yMean - (m*xMean);
 
 
-      int counter = 0;
       r = 0.0;
       for(int i = start ; i <= end; i++){
         float onePointError = abs((m * (cloud_filtered[i].x -xstart) + q - cloud_filtered[i].y));
@@ -293,12 +300,13 @@ static void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
     pcl::toROSMsg(cloud_filtered, output);
 
     pub.publish(output);
+    return;
 #else
 
     //@ToDoSave into file
     lineRow_p calculatedRow = new lineRow_t;
     calculatedRow->LineRow = lineArray;
-    calculatedRow->timestamp = ros::Time::now();        // maybe should done differently
+    calculatedRow->timestamp = timestamp;               // maybe should done differently
     calculatedRow->velocity = currentSpeed;             // current velocity of the drone
     calculatedRow->numberOfLines = numberOfLines;
     handleLines(calculatedRow);
@@ -367,8 +375,6 @@ static void handleLines(lineRow_p lineRow){
           qDifference += abs(lineRowArray[lineRowArrayIndexerStart]->LineRow[i-1].q - lineRowArray[lineRowArrayIndexerStart]->LineRow[i].q);
         }
 
-
-
         if(lineRowArray[lineRowArrayIndexerStart]->LineRow[i].value > MIN_VALUE && qDifference < MAX_ACCEPTED_DIFFERENCE){
           posLineCounter ++;
           if(posLineCounter > (LANDING_FIELD_SIZE/LINE_PIECE_SIZE)){
@@ -411,8 +417,6 @@ static void handleLines(lineRow_p lineRow){
             //find the same line in the upper rows an check there values
             upLinesChecker = 1;
 
-            //for(int y = lineRowArrayIndexerStart + 1; y <= lineRowArrayIndexerEnd ; y++) //this loop iterates from the given start line upwards in lineRows of the lineRowArray
-            //{
               int y = lineRowArrayIndexerStart + 1;
               while(y != lineRowArrayIndexerEnd && upLinesChecker){ //this loop iterates from the given start line upwards in lineRows
                 if(y >= SIZE_OF_ROW_BUFFER) {y = 0;}
@@ -422,7 +426,7 @@ static void handleLines(lineRow_p lineRow){
                 j++;
                 if(j >= (lineRowArray[y]->numberOfLines -1))upLinesChecker = 0;
               }
-              if(lineRowArray[y]->LineRow[j].value < MIN_VALUE) {upLinesChecker = 0;}      // if the value from just one line is considered as bad.
+              if(lineRowArray[y]->LineRow[j].value < MIN_VALUE) {upLinesChecker = 0;} // if the value from just one line is considered as bad.
               else{
                 landingFieldSize ++;
                 landingFieldValue += lineRowArray[y]->LineRow[j].value;
@@ -434,7 +438,6 @@ static void handleLines(lineRow_p lineRow){
 
 #endif
               }
-            //}}
             if(upLinesChecker){ // if all upper lines were also good.
               goodColumnsCounter ++;
             }
@@ -444,8 +447,6 @@ static void handleLines(lineRow_p lineRow){
               goodColumnsCounter = 0;
               xCenterPos = 0xFFFFFFFFFFFFFFFF;
               hight = 0;}
-
-
 
             if(goodColumnsCounter >= ((LANDING_FIELD_SIZE/2)/LINE_PIECE_SIZE) && xCenterPos == 0xFFFFFFFFFFFFFFFF){ //save the center of the Landing field
               xCenterPos = lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer-goodColumnsCounter].x + 5; //This equals the center of the landingField by a 10 * 10m field.

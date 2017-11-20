@@ -5,21 +5,15 @@
 #include <sstream>
 using namespace std;
 // PCL specific includes
-#include <sensor_msgs/PointCloud2.h>
 #include <visualization_msgs/Marker.h>
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <pcl_conversions/pcl_conversions.h>
-#include <pcl-1.7/pcl/point_cloud.h>
 #include <pcl-1.7/pcl/point_types.h>
 #include <pcl-1.7/pcl/impl/point_types.hpp>
 #include <pcl-1.7/pcl/kdtree/kdtree_flann.h>
 #include <tf/transform_broadcaster.h>
 #include <std_msgs/Int32.h>
 
-#include <pcl_ros/point_cloud.h>
-#include <pcl/filters/radius_outlier_removal.h>
-#include <pcl/filters/conditional_removal.h>
-#include <pcl/filters/passthrough.h>
 #include <pcl_filter/LandingField.h>
 #include <pcl-1.7/pcl/io/pcd_io.h>
 #include "e_l_f_d.h"
@@ -31,6 +25,7 @@ using namespace std;
 
 
 //possibleLandingField_p* posLandingFieldArray; //Array where the possible landing sides are stored;
+ros::Publisher linePubLandingFields;
 possibleLandingField_t posLandingFieldArray[NUMBER_OF_POSSIBLE_LANDING_FIELDS];
 float currentSpeed = 5.0;       //Current speed of the Drone needs to be updated ! [mm]
 //int minValue = 500;              //min value which each line needs to have to be considered as good
@@ -62,6 +57,39 @@ static void addNewLandingField(pcl_filter::LandingField landingField){
   inputLandingField.xPos = landingField.xPos;
   inputLandingField.time = landingField.timestamp;
   inputLandingField.hight = landingField.hight;
+
+#if (IS_SIMULATION == 5)
+
+  visualization_msgs::Marker posLandingField;
+  posLandingField.type = visualization_msgs::Marker::LINE_LIST;
+  posLandingField.lifetime = ros::Duration(2,0);
+  posLandingField.header.frame_id = "VUX-1";
+  posLandingField.header.stamp = ros::Time::now();
+  posLandingField.ns = "points_and_lines";
+  posLandingField.action =visualization_msgs::Marker::ADD;
+  posLandingField.pose.orientation.w = 1.0;
+  posLandingField.id = 0;
+
+  // Set width of lines
+  posLandingField.scale.x = 0.5;
+
+
+  // Make good Lines green
+  posLandingField.color.g = 1.0f;
+  posLandingField.color.a = 1.0;
+
+  geometry_msgs::Point p;
+  p.z = 0;
+
+  p.x = inputLandingField.xPos  - LANDING_FIELD_SIZE/2;
+  p.y = inputLandingField.hight;
+  posLandingField.points.push_back(p);
+
+  p.x = inputLandingField.xPos  + LANDING_FIELD_SIZE/2;
+  posLandingField.points.push_back(p);
+
+  linePubLandingFields.publish(posLandingField);
+#endif
 
   //iterate trough the array and fing the right place for the given landingField.
 
@@ -115,7 +143,6 @@ static void updateCurrentSpeed(std_msgs::Int32 newSpeed){
 
 static void updateLandingFieldArray(const ros::TimerEvent& event){
 
-
 #if (IS_SIMULATION == 5)
   //std::cout << "updateLandingFieldArray was called" << endl;
     std::cout << "currentEntriesUpdate " << currentEntries <<endl;
@@ -125,7 +152,6 @@ static void updateLandingFieldArray(const ros::TimerEvent& event){
     //Use forgettingfunction to give the entries new values
     for(int i = 0; i<currentEntries ; i++){
       int newValue = posLandingFieldArray[i].value - (currentEntries * 5 + currentSpeed * 2 + (MAX_VALUE - posLandingFieldArray[i].initValue)/10);
-      //posLandingFieldArray[i]->value -=  (currentEntries * 10 + currentSpeed * 5 + (MAX_VALUE - posLandingFieldArray[i]->initValue)/10);
       if(newValue > MIN_VALUE && newValue < MAX_VALUE){
         posLandingFieldArray[i].value = newValue;
       }
@@ -214,6 +240,7 @@ int main(int argc, char **argv)
   ros::Timer timer = n.createTimer(ros::Duration(5),updateLandingFieldArray,false);
   // Create a ROS publisher for the output point cloud
  // posLandingFieldArray = new possibleLandingField_p[NUMBER_OF_POSSIBLE_LANDING_FIELDS];
+  linePubLandingFields = n.advertise<visualization_msgs::Marker>("posLandingFields", 1);
 
   /**
    * ros::spin() will enter a loop, pumping callbacks.  With this version, all
