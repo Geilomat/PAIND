@@ -32,10 +32,8 @@ using namespace std;
 
 //possibleLandingField_p* posLandingFieldArray; //Array where the possible landing sides are stored;
 lineRow_p* lineRowArray;         //Array of the scanned lines is handled as ringbuffer.
-float currentSpeed = 5.0;       //Current speed of the Drone needs to be updated ! [mm]
-//int minValue = 500;              //min value which each line needs to have to be considered as good
-//int sizeOfRowArray = 1000;      //size of the Row Array equals the amount of Rows which are looked back to finde landing planes
-
+float currentSpeed = 5.0;       //Current speed of the Drone needs to be updated ! [m/s]
+double startTime;
 
 int32_t voltageLinePositionX = 0xFFFFFFFF;
 
@@ -45,8 +43,15 @@ ros::Publisher linePub;       //Publisher for the lineCloumn to visualize it in 
 ros::Publisher possibleLandingFieldsPub; //publisher for possible landing fields
 
 
+#if (IS_SIMULATION == 1 || IS_SIMULATION == 6)
+visualization_msgs::Marker line_list_bad;
+visualization_msgs::Marker line_list_good;
+visualization_msgs::Marker line_list_possible;
+#endif
+
 static void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
 
+  static double oldTime = startTime;
   ros::Time timestamp  = ros::Time::now(); //get the actual time;
   // Container for original & filtered data
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_unfiltered (new pcl::PointCloud<pcl::PointXYZ>);
@@ -114,9 +119,9 @@ static void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
     pos = pos + (int) LINE_PIECE_SIZE;
 
     int value = 0;
-    double q;
-    double m;
-    float r;
+    double yStart;
+    double slope;
+    float roughness;
     int size = abs(end - start)+1;
 
     if(voltageLinePositionX == 0xFFFFFFFF){
@@ -133,9 +138,9 @@ static void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
 
     if(size < (DENSITY_PER_M/LINE_PIECE_SIZE)){ // if the densitiy is too small
       value = -1;
-      q = 0.0;
-      m = 0.0;
-      r = 0.0;
+      yStart = 0.0;
+      slope = 0.0;
+      roughness = 0.0;
     }
     else{
 
@@ -172,43 +177,41 @@ static void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
 
       xMean = xMean/((float)size);
       yMean = yMean/((float)size);
-      m = (xyMul - (size*xMean*yMean))/(xSquared - (size*xMean*xMean));
-
-      //m = numerator/denumerator;
-
-      q = yMean - (m*xMean);
 
 
-      r = 0.0;
+      slope = (xyMul - (size*xMean*yMean))/(xSquared - (size*xMean*xMean));
+      yStart = yMean - (slope*xMean);
+
+      //calculate the average roughness
+      roughness = 0.0;
       for(int i = start ; i <= end; i++){
-        float onePointError = abs((m * (cloud_filtered[i].x -xstart) + q - cloud_filtered[i].y));
+        float onePointError = abs((slope * (cloud_filtered[i].x -xstart) + yStart - cloud_filtered[i].y));
 
-        if(onePointError > MAX_ACCEPTED_DIFFERENCE
-           ){  //Test if the Error is greater then the maximal axepted Difference
+        if(onePointError > MAX_ACCEPTED_DIFFERENCE){  //Test if the Error is greater then the maximal axepted Difference
           value = -1;  //If there are too much height difference in more then one point -> probebly a staff or something
         }
-        r += onePointError;
+        roughness += onePointError;
       }
-      r = r/size;
+      roughness = roughness/size;
 
       if(value > -1){
         //@ToDO value funktion z bsp.
-        value = MAX_VALUE - (r*100 + abs((int)(m*1500))); //So it dosn't become a negative value if m is negatve. M is in percent.
+        value = MAX_VALUE - (roughness*100 + abs(slope*((MAX_VALUE-MIN_VALUE)/MAX_ACCEPTED_SLOPE))); //So it dosn't become a negative value if slope is negatve. Slope is in percent.
       }
 
     }
 
 #if (IS_SIMULATION == 1)
     //just for debugging purpouse
-    std::cout << "x: " <<x<<" m: "<< m <<" q: "<<q <<" r: " <<r << " value: " << value <<endl;
+    std::cout << "x: " <<x<<" slope: "<< slope<<" ystart: "<<yStart <<" roughness: " <<roughness << " value: " << value <<endl;
     std::cout <<"xstart:" << xstart <<" size:" << size <<" numberOfLines:" <<numberOfLines<< " lineArrayIterator: "<<lineArrayIterator <<endl;
 #endif
 
     //Save calculated values int the Array
     lineArray[lineArrayIterator].x = x;
-    lineArray[lineArrayIterator].q = q;
-    lineArray[lineArrayIterator].m = m;
-    lineArray[lineArrayIterator].r = r;
+    lineArray[lineArrayIterator].yStart = yStart;
+    lineArray[lineArrayIterator].slope = slope;
+    lineArray[lineArrayIterator].roughness = roughness;
     lineArray[lineArrayIterator].value = value;
 
     lineArrayIterator ++;
@@ -217,25 +220,28 @@ static void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
 
 
   //determinate if this is a Simulation -> publish lines, else store the made line array into he lineRow array.
+float z = (timestamp.toSec() - startTime) * currentSpeed;
 
-
-#if (IS_SIMULATION == 1)
+#if (IS_SIMULATION == 1 || IS_SIMULATION == 6)
 
     //@ToDo Convert into line pieces and publish it. Works more or less fine
 
-    visualization_msgs::Marker line_list_bad;
-    visualization_msgs::Marker line_list_good;
-    visualization_msgs::Marker line_list_possible;
-    line_list_bad.type = line_list_good.type = line_list_possible.type = visualization_msgs::Marker::LINE_LIST;
+//    visualization_msgs::Marker line_list_bad;
+//    visualization_msgs::Marker line_list_good;
+//    visualization_msgs::Marker line_list_possible;
+//    line_list_bad.type = line_list_good.type = line_list_possible.type = visualization_msgs::Marker::LINE_LIST;
 
-    line_list_bad.header.frame_id = line_list_possible.header.frame_id =  line_list_good.header.frame_id = "VUX-1";
-    line_list_bad.header.stamp = line_list_possible.header.stamp = line_list_good.header.stamp = ros::Time::now();
-    line_list_bad.ns = line_list_possible.ns =line_list_good.ns = "points_and_lines";
-    line_list_bad.action = line_list_possible.action =line_list_good.action =visualization_msgs::Marker::ADD;
-    line_list_bad.pose.orientation.w = line_list_possible.pose.orientation.w =  line_list_good.pose.orientation.w = 1.0;
-    line_list_bad.id = 0;
-    line_list_possible.id = 1;
-    line_list_good.id = 2;
+//    line_list_bad.header.frame_id = line_list_possible.header.frame_id =  line_list_good.header.frame_id = "VUX-1";
+//    line_list_bad.header.stamp = line_list_possible.header.stamp = line_list_good.header.stamp = ros::Time::now();
+//    line_list_bad.ns = line_list_possible.ns =line_list_good.ns = "points_and_lines";
+//    line_list_bad.action = line_list_possible.action =line_list_good.action =visualization_msgs::Marker::ADD;
+//    line_list_bad.pose.orientation.w = line_list_possible.pose.orientation.w =  line_list_good.pose.orientation.w = 1.0;
+//    line_list_bad.id = 0;
+//    line_list_possible.id = 1;
+//    line_list_good.id = 2;
+
+  if((timestamp.toSec() - oldTime) * currentSpeed > 0.2){
+    oldTime = timestamp.toSec();
 
     // Set width of lines
     line_list_bad.scale.x = 0.15;
@@ -256,43 +262,47 @@ static void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
     line_list_good.color.a = 1.0;
 
     geometry_msgs::Point p;
-    p.z = 0;
+
+    p.z = z;
+
+    std::cout << "Z: " << p.z <<endl;
     //determite if the lines are considered good possible or bad
 
     for(int i = 0; i < numberOfLines; i++){
-
-    if(lineArray[i].value == -1 || lineArray[i].value < MIN_VALUE){
+    if(lineArray[i].value != -1 ){
+    if(lineArray[i].value < MIN_VALUE){
       p.x = lineArray[i].x;
-      p.y = lineArray[i].q;
+      p.y = lineArray[i].yStart;
       line_list_bad.points.push_back(p);
 
       p.x = lineArray[i].x + LINE_PIECE_SIZE;
-      p.y = lineArray[i].q + lineArray[i].m * LINE_PIECE_SIZE;
+      p.y = lineArray[i].yStart + lineArray[i].slope * LINE_PIECE_SIZE;
       line_list_bad.points.push_back(p);
     }
     else if(lineArray[i].value >= 700){
       p.x = lineArray[i].x;
-      p.y = lineArray[i].q;
+      p.y = lineArray[i].yStart;
       line_list_good.points.push_back(p);
 
       p.x = lineArray[i].x + LINE_PIECE_SIZE;
-      p.y = lineArray[i].q + lineArray[i].m * LINE_PIECE_SIZE;
+      p.y = lineArray[i].yStart + lineArray[i].slope * LINE_PIECE_SIZE;
       line_list_good.points.push_back(p);
     }
     else{
       p.x = lineArray[i].x;
-      p.y = lineArray[i].q;
+      p.y = lineArray[i].yStart;
       line_list_possible.points.push_back(p);
 
       p.x = lineArray[i].x + LINE_PIECE_SIZE;
-      p.y = lineArray[i].q + lineArray[i].m * LINE_PIECE_SIZE;
+      p.y = lineArray[i].yStart + lineArray[i].slope * LINE_PIECE_SIZE;
       line_list_possible.points.push_back(p);
     }
     }
-
-    linePub.publish(line_list_bad);
-    linePub.publish(line_list_possible);
-    linePub.publish(line_list_good);
+  }
+  }
+//    linePub.publish(line_list_bad);
+//    linePub.publish(line_list_possible);
+//    linePub.publish(line_list_good);
 
     //Publish the filtered cloud vor visualization purpose
     sensor_msgs::PointCloud2 output;
@@ -300,8 +310,10 @@ static void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
     pcl::toROSMsg(cloud_filtered, output);
 
     pub.publish(output);
+#if (IS_SIMULATION == 1)
     return;
-#else
+#endif
+#endif
 
     //@ToDoSave into file
     lineRow_p calculatedRow = new lineRow_t;
@@ -309,6 +321,7 @@ static void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
     calculatedRow->timestamp = timestamp;               // maybe should done differently
     calculatedRow->velocity = currentSpeed;             // current velocity of the drone
     calculatedRow->numberOfLines = numberOfLines;
+    calculatedRow->z = z;
     handleLines(calculatedRow);
 
 #if (IS_SIMULATION == 3)
@@ -318,8 +331,6 @@ static void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
       //std::cout << "Points per row:" << cloud_unfiltered->width << endl;
 
       pub.publish(output);
-#endif
-
 #endif
 }
 
@@ -370,9 +381,9 @@ static void handleLines(lineRow_p lineRow){
       int posLandingSidesCounter = 0;
       do{
         // Calculate the difference in hight bewtween the different lines.
-        float qDifference = abs(lineRowArray[lineRowArrayIndexerStart]->LineRow[i].q - lineRowArray[lineRowArrayIndexerStart]->LineRow[i+ 1].q);
+        float qDifference = abs(lineRowArray[lineRowArrayIndexerStart]->LineRow[i].yStart - lineRowArray[lineRowArrayIndexerStart]->LineRow[i+ 1].yStart);
         if(i > 1){
-          qDifference += abs(lineRowArray[lineRowArrayIndexerStart]->LineRow[i-1].q - lineRowArray[lineRowArrayIndexerStart]->LineRow[i].q);
+          qDifference += abs(lineRowArray[lineRowArrayIndexerStart]->LineRow[i-1].yStart - lineRowArray[lineRowArrayIndexerStart]->LineRow[i].yStart);
         }
 
         if(lineRowArray[lineRowArrayIndexerStart]->LineRow[i].value > MIN_VALUE && qDifference < MAX_ACCEPTED_DIFFERENCE){
@@ -450,14 +461,14 @@ static void handleLines(lineRow_p lineRow){
 
             if(goodColumnsCounter >= ((LANDING_FIELD_SIZE/2)/LINE_PIECE_SIZE) && xCenterPos == 0xFFFFFFFFFFFFFFFF){ //save the center of the Landing field
               xCenterPos = lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer-goodColumnsCounter].x + 5; //This equals the center of the landingField by a 10 * 10m field.
-              hight = lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer].q;
+              hight = lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer].yStart;
             }
             if(goodColumnsCounter >= (LANDING_FIELD_SIZE/LINE_PIECE_SIZE)){ //10 good Columns where detectet -> ah possible landing field
               //publish here a possible landing field with the array of the lines -> value, time, speed etc.
 
               //check first if slope on the sides is okay:
-              float leftSideSlope = abs(lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer-goodColumnsCounter].q - lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer].q)/LANDING_FIELD_SIZE;
-              float rightSideSlope = abs(lineRowArray[lineRowArrayIndexerEnd]->LineRow[possibleLandingSides[i][1]+indexer-goodColumnsCounter].q - lineRowArray[lineRowArrayIndexerEnd]->LineRow[possibleLandingSides[i][1]+indexer].q)/LANDING_FIELD_SIZE;
+              float leftSideSlope = abs(lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer-goodColumnsCounter].yStart - lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer].yStart)/LANDING_FIELD_SIZE;
+              float rightSideSlope = abs(lineRowArray[lineRowArrayIndexerEnd]->LineRow[possibleLandingSides[i][1]+indexer-goodColumnsCounter].yStart - lineRowArray[lineRowArrayIndexerEnd]->LineRow[possibleLandingSides[i][1]+indexer].yStart)/LANDING_FIELD_SIZE;
 
               if(leftSideSlope <= MAX_ACCEPTED_SLOPE && rightSideSlope <= MAX_ACCEPTED_SLOPE){
 
@@ -479,6 +490,7 @@ static void handleLines(lineRow_p lineRow){
 #endif
                 newPossLandField.timestamp = lineRowArray[middleLine]->timestamp;
                 newPossLandField.velocity = lineRowArray[middleLine]->velocity;
+                newPossLandField.z = lineRowArray[middleLine]->z;
                 newPossLandField.hight = hight;
 
                 //publish it so it can be stored into the Array;
@@ -573,6 +585,16 @@ static void updateVelocity(std_msgs::Int32 newVelocity){
   currentSpeed = newVelocity.data;
 }
 
+#if (IS_SIMULATION == 1 || IS_SIMULATION == 6)
+static void publishLineList(const ros::TimerEvent& event){
+
+  linePub.publish(line_list_bad);
+  linePub.publish(line_list_possible);
+  linePub.publish(line_list_good);
+
+
+}
+#endif
 
 int main(int argc, char **argv)
 {
@@ -624,6 +646,24 @@ int main(int argc, char **argv)
 
   lineRowArray = new lineRow_p[SIZE_OF_ROW_BUFFER];
 
+#if (IS_SIMULATION == 1 || IS_SIMULATION == 6)
+  ros::Timer timer = n.createTimer(ros::Duration(1),publishLineList,false);
+
+  startTime = ros::Time::now().toSec();
+
+
+  line_list_bad.type = line_list_good.type = line_list_possible.type = visualization_msgs::Marker::LINE_LIST;
+
+  line_list_bad.header.frame_id = line_list_possible.header.frame_id =  line_list_good.header.frame_id = "VUX-1";
+  line_list_bad.header.stamp = line_list_possible.header.stamp = line_list_good.header.stamp = ros::Time::now();
+  line_list_bad.ns = line_list_possible.ns =line_list_good.ns = "points_and_lines";
+  line_list_bad.action = line_list_possible.action =line_list_good.action =visualization_msgs::Marker::ADD;
+  line_list_bad.pose.orientation.w = line_list_possible.pose.orientation.w =  line_list_good.pose.orientation.w = 1.0;
+  line_list_bad.id = 0;
+  line_list_possible.id = 1;
+  line_list_good.id = 2;
+
+#endif
   /**
    * ros::spin() will enter a loop, pumping callbacks.  With this version, all
    * callbacks will be called from within this thread (the main one).  ros::spin()

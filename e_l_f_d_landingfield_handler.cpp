@@ -31,6 +31,43 @@ float currentSpeed = 5.0;       //Current speed of the Drone needs to be updated
 //int minValue = 500;              //min value which each line needs to have to be considered as good
 int currentEntries = 0;
 
+/*\brief fuses to neighbouring LandingFields and saves them into the pointer from the first !!
+ *
+ * */
+static void mergeTwoLandingFields(possibleLandingField_p toBeMergedInto, possibleLandingField_p toBeMergedFrom){
+//  possibleLandingField_t mergedField;
+
+//  mergedField.mergeCounter = toBeMergedInto->mergeCounter + 1;
+
+//  //merge the fields
+//  mergedField.xPos = (toBeMergedInto->xPos * (toBeMergedInto->mergeCounter +1) + toBeMergedFrom->xPos)/(2+toBeMergedInto->mergeCounter);
+//  mergedField.time = toBeMergedInto->time;
+//  mergedField.hight = (toBeMergedInto->hight * (toBeMergedInto->mergeCounter +1)+ toBeMergedFrom->hight)/(2+toBeMergedInto->mergeCounter);
+//  mergedField.speed = (toBeMergedInto->speed * (toBeMergedInto->mergeCounter +1)+ toBeMergedFrom->speed)/(2+toBeMergedInto->mergeCounter);
+//  mergedField.z = (toBeMergedInto->z * (toBeMergedInto->mergeCounter +1) + toBeMergedFrom->z)/(2+toBeMergedInto->mergeCounter);
+//  int value = (toBeMergedInto->initValue + toBeMergedFrom->initValue)/2 + (50 * toBeMergedInto->mergeCounter +1); //Bonus cause of merging
+//  //if(value > MAX_VALUE) value = MAX_VALUE;
+//  mergedField.initValue = value;
+//  mergedField.value = mergedField.initValue; //reset the value cause of merging
+
+
+  toBeMergedInto->mergeCounter ++;
+  toBeMergedInto->xPos = (toBeMergedInto->xPos * (toBeMergedInto->mergeCounter +1) + toBeMergedFrom->xPos)/(2+toBeMergedInto->mergeCounter);
+  toBeMergedInto->hight = (toBeMergedInto->hight * (toBeMergedInto->mergeCounter +1)+ toBeMergedFrom->hight)/(2+toBeMergedInto->mergeCounter);
+  toBeMergedInto->speed = (toBeMergedInto->speed * (toBeMergedInto->mergeCounter +1)+ toBeMergedFrom->speed)/(2+toBeMergedInto->mergeCounter);
+  toBeMergedInto->z =  (toBeMergedInto->z * (toBeMergedInto->mergeCounter +1) + toBeMergedFrom->z)/(2+toBeMergedInto->mergeCounter);
+  toBeMergedInto->value = (toBeMergedInto->initValue + toBeMergedFrom->initValue)/2 + (50 * (toBeMergedInto->mergeCounter +1));
+  toBeMergedInto->initValue = toBeMergedInto->value;
+
+  std::cout << "merged: X: "<< toBeMergedInto->xPos <<
+               " Z: " << toBeMergedInto->z <<
+               "\t and: X: " << toBeMergedFrom->xPos<<
+               " Z: " <<toBeMergedFrom->z << endl;
+             // "\t into: X " << mergedField.xPos<<
+             //  " Z: " << mergedField.z<< endl;
+  //save the new values into the first parameter
+  //*toBeMergedInto = mergedField;
+}
 
 
 
@@ -56,7 +93,9 @@ static void addNewLandingField(pcl_filter::LandingField landingField){
   inputLandingField.speed = landingField.velocity;
   inputLandingField.xPos = landingField.xPos;
   inputLandingField.time = landingField.timestamp;
+  inputLandingField.z = landingField.z;
   inputLandingField.hight = landingField.hight;
+  inputLandingField.mergeCounter = 0;
 
 #if (IS_SIMULATION == 5)
 
@@ -98,8 +137,25 @@ static void addNewLandingField(pcl_filter::LandingField landingField){
     currentEntries ++;
   }
   else{
+
+    //search throu the landingField array to find mergable landingfields and if so merge them.
+    for(int j = 0; j < currentEntries; j++){
+
+      int xDistance = abs(posLandingFieldArray[j].xPos - inputLandingField.xPos);
+      if(xDistance <= LANDING_FIELD_SIZE){
+
+       int zDistance = inputLandingField.z - posLandingFieldArray[j].z; // inputLandingField should always be same or greater then the entry form the array.
+       if(zDistance <= LANDING_FIELD_SIZE){
+         mergeTwoLandingFields(&posLandingFieldArray[j], &inputLandingField);
+         return;
+       }
+      }
+    }
+
+
+
     int i = 0;
-    // find the right place for the calculated landing Field.
+    //find the right place for the calculated landing Field.
     while(i < currentEntries && posLandingFieldArray[i].value > inputLandingField.value ){
       i ++;
       if(i >= NUMBER_OF_POSSIBLE_LANDING_FIELDS){
@@ -151,7 +207,7 @@ static void updateLandingFieldArray(const ros::TimerEvent& event){
   if(currentEntries > 1){
     //Use forgettingfunction to give the entries new values
     for(int i = 0; i<currentEntries ; i++){
-      int newValue = posLandingFieldArray[i].value - (currentEntries * 5 + currentSpeed * 2 + (MAX_VALUE - posLandingFieldArray[i].initValue)/10);
+      int newValue = posLandingFieldArray[i].value - (currentEntries * 2 + currentSpeed + (MAX_VALUE - posLandingFieldArray[i].initValue)/10);
       if(newValue > MIN_VALUE && newValue < MAX_VALUE){
         posLandingFieldArray[i].value = newValue;
       }
@@ -161,13 +217,14 @@ static void updateLandingFieldArray(const ros::TimerEvent& event){
 
     }
     possibleLandingField_t tempLandingField;
-    //sort the Array and delet "bad" entries
+    //sort the Array and delete "bad" entries
     int sorted = 0;
     while(sorted < currentEntries-1){
       for(int i = 0;i<currentEntries-1;i++){
         if(posLandingFieldArray[i].value < posLandingFieldArray[i+1].value){
           tempLandingField = posLandingFieldArray[i];
           posLandingFieldArray[i] = posLandingFieldArray[i+1];
+          posLandingFieldArray[i+1] = tempLandingField;
         }
         else{
           sorted ++;
@@ -188,11 +245,49 @@ static void updateLandingFieldArray(const ros::TimerEvent& event){
   std::cout <<"value: " << posLandingFieldArray[i].value <<
               "\tinitValue: " << posLandingFieldArray[i].initValue<<
               "\t xPos: " << posLandingFieldArray[i].xPos <<
-              "\t time: " << posLandingFieldArray[i].time <<
+              //"\t time: " << posLandingFieldArray[i].time <<
               "\t velocity: " << posLandingFieldArray[i].speed <<
-              "\t hight: " << posLandingFieldArray[i].hight << endl;
+              "\t z: "  << posLandingFieldArray[i].z<<
+              "\t hight: " << posLandingFieldArray[i].hight <<
+              "\t mergeCounter: "<< posLandingFieldArray[i].mergeCounter << endl;
   }
 
+#endif
+#if(IS_SIMULATION == 6)
+
+  visualization_msgs::Marker posLandingField;
+  posLandingField.type = visualization_msgs::Marker::CUBE_LIST;
+//  posLandingField.lifetime = ros::Duration(5,0);
+  posLandingField.header.frame_id = "VUX-1";
+  posLandingField.header.stamp = ros::Time::now();
+  posLandingField.ns = "posLandingField";
+  posLandingField.action =visualization_msgs::Marker::ADD;
+  posLandingField.pose.orientation.w = 1.0;
+  posLandingField.id = 0;
+
+  // Set width of lines
+  posLandingField.scale.x = 10;
+  posLandingField.scale.y = 0.2;
+  posLandingField.scale.z = 10;
+
+
+  // Make them blue
+  posLandingField.color.b = 1.0f;
+  posLandingField.color.a = 1.0;
+
+  for(int i = 0; i < currentEntries; i++){
+    geometry_msgs::Point p;
+    p.x = posLandingFieldArray[i].xPos;
+    p.y = posLandingFieldArray[i].hight;
+    p.z = posLandingFieldArray[i].z;
+
+    posLandingField.points.push_back(p);
+
+  }
+
+
+
+  linePubLandingFields.publish(posLandingField);
 #endif
 }
 

@@ -4,7 +4,7 @@
 #include <pcl_filter/LandingField.h>
 
 
-#define IS_SIMULATION 5                       //define if this is a simulation or runnning on real time
+#define IS_SIMULATION 6                       //define if this is a simulation or runnning on real time
 #define NUMBER_OF_POSSIBLE_LANDING_FIELDS 10  //# of possible landing sides which shoulde be stored
 #define LINE_PIECE_SIZE 1.0f                  //size of one line piece [m]
 #define DENSITY_PER_M 10                      //amount of points per meter which are needet for a line to be considered as possible
@@ -19,9 +19,9 @@
 
 typedef struct line{
   int x;
-  float q;
-  float m;
-  float r;
+  float yStart;
+  float slope;
+  float roughness;
   int value;
 }line_t;
 
@@ -31,6 +31,7 @@ typedef struct lineRow{
   line_p LineRow;
   ros::Time timestamp;
   float velocity;
+  float z;                                      //just for visualisation purposes
   int numberOfLines;
 }lineRow_t;
 
@@ -40,9 +41,11 @@ typedef struct possibleLandingField{
   int value;
   int initValue;
   int hight;
+  int mergeCounter;
   ros::Time time;
   int xPos;
   float speed;
+  float z;                                     //just for visualisation purposes
 }possibleLandingField_t;
 
 typedef possibleLandingField_t* possibleLandingField_p;
