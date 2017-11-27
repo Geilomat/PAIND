@@ -144,32 +144,14 @@ static void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
     }
     else{
 
-      //calculating the m and q value with the least square methode
-//      double xMeanNum = 0.0;
-//      double yMeanNum = 0.0;
-
-//      for(int i = start; i <= end;i++){
-//        xMeanNum += cloud_filtered[i].x - xstart; //this way every x value of the array is treated as the line woud beginn at x = 0
-//        yMeanNum += cloud_filtered[i].y;
-//      }
-
-//      double xMean = xMeanNum/((float)size);
-//      double yMean = yMeanNum/((float)size);
-
-//      double numerator = 0.0;
-//      double denumerator = 0.0;
-
-//      for(int i = start; i <= end; i++){
-//        numerator += (cloud_filtered[i].x -xstart - xMean)*(cloud_filtered[i].y - yMean);
-//        denumerator += (cloud_filtered[i].x -xstart - xMean)*(cloud_filtered[i].x -xstart - xMean);
-//      }
+      //calculating the slope and yStart value with the least square methode
       double xMean = 0.0;
       double yMean = 0.0;
       double xSquared = 0.0;
       double xyMul = 0.0;
 
       for(int i = start; i<=end; i++){
-        xMean += cloud_filtered[i].x - xstart; //this way every x value of the array is treated as the line woud beginn at x = 0
+        xMean += cloud_filtered[i].x - xstart; //this way every x value of the array is treated as the line woud begin at x = 0
         yMean += cloud_filtered[i].y;
         xSquared += (cloud_filtered[i].x-xstart)*(cloud_filtered[i].x -xstart);
         xyMul += (cloud_filtered[i].x - xstart) * cloud_filtered[i].y;
@@ -414,7 +396,6 @@ static void handleLines(lineRow_p lineRow){
 #if (IS_SIMULATION != 1)
       // Check if there are possible landingsides which can be computed
       if(posLandingSidesCounter > 0){
-      //@ToDo: find here the possible landing sites and give them a value;
         i = 0;
         do{
           int indexer = 0;
@@ -463,7 +444,7 @@ static void handleLines(lineRow_p lineRow){
               xCenterPos = lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer-goodColumnsCounter].x + 5; //This equals the center of the landingField by a 10 * 10m field.
               hight = lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer].yStart;
             }
-            if(goodColumnsCounter >= (LANDING_FIELD_SIZE/LINE_PIECE_SIZE)){ //10 good Columns where detectet -> ah possible landing field
+            if(goodColumnsCounter >= (LANDING_FIELD_SIZE/LINE_PIECE_SIZE)){ //Enough good Columns where detectet -> ah possible landing field
               //publish here a possible landing field with the array of the lines -> value, time, speed etc.
 
               //check first if slope on the sides is okay:

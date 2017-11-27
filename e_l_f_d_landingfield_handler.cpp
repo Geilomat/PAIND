@@ -144,7 +144,7 @@ static void addNewLandingField(pcl_filter::LandingField landingField){
       int xDistance = abs(posLandingFieldArray[j].xPos - inputLandingField.xPos);
       if(xDistance <= LANDING_FIELD_SIZE){
 
-       int zDistance = inputLandingField.z - posLandingFieldArray[j].z; // inputLandingField should always be same or greater then the entry form the array.
+       int zDistance = inputLandingField.z - posLandingFieldArray[j].z; // inputLandingFields z value should always be same or greater then the entry form the array.
        if(zDistance <= LANDING_FIELD_SIZE){
          mergeTwoLandingFields(&posLandingFieldArray[j], &inputLandingField);
          return;
