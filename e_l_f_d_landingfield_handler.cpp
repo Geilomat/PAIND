@@ -139,18 +139,19 @@ static void addNewLandingField(pcl_filter::LandingField landingField){
   else{
 
     //search throu the landingField array to find mergable landingfields and if so merge them.
-    for(int j = 0; j < currentEntries; j++){
 
-      int xDistance = abs(posLandingFieldArray[j].xPos - inputLandingField.xPos);
-      if(xDistance <= LANDING_FIELD_SIZE){
+//    for(int j = 0; j < currentEntries; j++){
 
-       int zDistance = inputLandingField.z - posLandingFieldArray[j].z; // inputLandingFields z value should always be same or greater then the entry form the array.
-       if(zDistance <= LANDING_FIELD_SIZE){
-         mergeTwoLandingFields(&posLandingFieldArray[j], &inputLandingField);
-         return;
-       }
-      }
-    }
+//      int xDistance = abs(posLandingFieldArray[j].xPos - inputLandingField.xPos);
+//      if(xDistance <= LANDING_FIELD_SIZE){
+
+//       int zDistance = inputLandingField.z - posLandingFieldArray[j].z; // inputLandingFields z value should always be same or greater then the entry form the array.
+//       if(zDistance <= LANDING_FIELD_SIZE){
+//         mergeTwoLandingFields(&posLandingFieldArray[j], &inputLandingField);
+//         return;
+//       }
+//      }
+//    }
 
 
 
@@ -272,8 +273,8 @@ static void updateLandingFieldArray(const ros::TimerEvent& event){
 
 
   // Make them blue
-  posLandingField.color.b = 1.0f;
-  posLandingField.color.a = 1.0;
+  posLandingField.color.b = 0.5f;
+  posLandingField.color.a = 0.6;
 
   for(int i = 0; i < currentEntries; i++){
     geometry_msgs::Point p;
