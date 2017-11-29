@@ -42,6 +42,7 @@ typedef struct possibleLandingField{
   int initValue;
   int hight;
   int mergeCounter;
+  int length;
   ros::Time time;
   int xPos;
   float speed;

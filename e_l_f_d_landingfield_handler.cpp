@@ -83,7 +83,8 @@ static void addNewLandingField(pcl_filter::LandingField landingField){
               "\t xPos: " << landingField.xPos <<
               "\t time: " << landingField.timestamp <<
               "\t speed: " << landingField.velocity <<
-              "\t hight: " << landingField.hight << endl;
+              "\t hight: " << landingField.hight <<
+              "\t length: " << landingField.length << endl;
   std::cout << "currentEntriesNewLine. " << currentEntries <<endl;
 #endif
 
@@ -95,6 +96,7 @@ static void addNewLandingField(pcl_filter::LandingField landingField){
   inputLandingField.time = landingField.timestamp;
   inputLandingField.z = landingField.z;
   inputLandingField.hight = landingField.hight;
+  inputLandingField.length = landingField.length;
   inputLandingField.mergeCounter = 0;
 
 #if (IS_SIMULATION == 5)
@@ -250,6 +252,7 @@ static void updateLandingFieldArray(const ros::TimerEvent& event){
               "\t velocity: " << posLandingFieldArray[i].speed <<
               "\t z: "  << posLandingFieldArray[i].z<<
               "\t hight: " << posLandingFieldArray[i].hight <<
+              "\t length: " << posLandingFieldArray[i].length <<
               "\t mergeCounter: "<< posLandingFieldArray[i].mergeCounter << endl;
   }
 
