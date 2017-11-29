@@ -19,20 +19,14 @@ using namespace std;
 #include <pcl-1.7/pcl/io/pcd_io.h>
 #include "e_l_f_d.h"
 
-//specific include for the columns
-//#include "linerow.h"
 
 
-
-
-//possibleLandingField_p* posLandingFieldArray; //Array where the possible landing sides are stored;
 ros::Publisher LandingFields;
 possibleLandingField_t posLandingFieldArray[NUMBER_OF_POSSIBLE_LANDING_FIELDS];
 float currentSpeed = 5.0;       //Current speed of the Drone needs to be updated ! [mm]
-//int minValue = 500;              //min value which each line needs to have to be considered as good
 int currentEntries = 0;
 
-/*\brief fuses to neighbouring LandingFields and saves them into the pointer from the first !!
+/*\brief merges to neighbouring LandingFields and saves them into the pointer from the first !!
  *
  * */
 static void mergeTwoLandingFields(possibleLandingField_p toBeMergedInto, possibleLandingField_p toBeMergedFrom){
@@ -114,7 +108,7 @@ static void addNewLandingField(pcl_filter::LandingField landingField){
   p.x = inputLandingField.xPos  + LANDING_FIELD_SIZE/2;
   posLandingField.points.push_back(p);
 
-  LandingField1.publish(posLandingField);
+  LandingFields.publish(posLandingField);
 #endif
 
   //iterate trough the array and fing the right place for the given landingField.
@@ -130,11 +124,11 @@ static void addNewLandingField(pcl_filter::LandingField landingField){
     for(int j = 0; j < currentEntries; j++){
 
       int zDistance = inputLandingField.z - posLandingFieldArray[j].z; // inputLandingFields z value should always be same or greater then the entry form the array.
-      if(zDistance <= (posLandingFieldArray[j].width/2 + LANDING_FIELD_SIZE/2)){
+      if(zDistance <= (posLandingFieldArray[j].width/2 + LANDING_FIELD_SIZE/2)){ //check if z distanzc isn't too far
         float xDistance =  abs(posLandingFieldArray[j].xPos - inputLandingField.xPos);
-        if(xDistance <= LANDING_FIELD_SIZE){
+        if(xDistance <= LANDING_FIELD_SIZE){ //Check if x distance is also acceptable
           float lengthDiff = abs(posLandingFieldArray[j].length - inputLandingField.length);
-          if(lengthDiff < LANDING_FIELD_SIZE){
+          if(lengthDiff < (LANDING_FIELD_SIZE * 2)){ //Ckeck if there is a maxiaml length difference of 2 min sized LandingFields
             mergeTwoLandingFields(&posLandingFieldArray[j], &inputLandingField);
             return;
           }
