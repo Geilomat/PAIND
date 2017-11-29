@@ -35,7 +35,7 @@ lineRow_p lineRowArray[SIZE_OF_ROW_BUFFER];         //Array of the scanned lines
 float currentSpeed = 5.0;       //Current speed of the Drone needs to be updated ! [m/s]
 double startTime;
 
-int32_t voltageLinePositionX = 0xFFFFFFFF;
+int32_t voltageLinePositionX = 0;
 
 
 ros::Publisher pub;           //Publisher for the lineRow_p to safe it for later calculation of landing planes
@@ -128,7 +128,7 @@ static void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
     float roughness;
     int size = abs(end - start)+1;
 
-    if(voltageLinePositionX == 0xFFFFFFFF){
+    if(voltageLinePositionX == 0){
      // std::cout << "DANGER \t !!! line tracking isn't working !!! \n It is possible that landing fields will be detected under the voltage line !!!" << endl;
     }
     else{   //check if the new line is under the voltage line -> make size = 0 => line will considerer as bad because of density
@@ -185,7 +185,7 @@ static void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
 
       if(value > -1){
         //@ToDO value funktion z bsp.
-        value = MAX_VALUE - (roughness*100 + abs(slope*((MAX_VALUE-MIN_VALUE)/MAX_ACCEPTED_SLOPE))); //So it dosn't become a negative value if slope is negatve. Slope is in percent.
+        value = MAX_VALUE_LINE - (roughness*100 + abs(slope*((MAX_VALUE_LINE-MIN_VALUE)/MAX_ACCEPTED_SLOPE))); //So it dosn't become a negative value if slope is negatve. Slope is in percent.
       }
 
     }
@@ -211,27 +211,13 @@ static void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
 #endif
 
   //determinate if this is a Simulation -> publish lines, else store the made line array into he lineRow array.
-float z = (timestamp.toSec() - startTime) * currentSpeed;
+double z = (timestamp.toSec() - startTime) * currentSpeed;
 
 #if (IS_SIMULATION == 1 || IS_SIMULATION == 6)
 
-    //@ToDo Convert into line pieces and publish it. Works more or less fine
+    //Convert into line pieces and publish it.
 
-//    visualization_msgs::Marker line_list_bad;
-//    visualization_msgs::Marker line_list_good;
-//    visualization_msgs::Marker line_list_possible;
-//    line_list_bad.type = line_list_good.type = line_list_possible.type = visualization_msgs::Marker::LINE_LIST;
-
-//    line_list_bad.header.frame_id = line_list_possible.header.frame_id =  line_list_good.header.frame_id = "VUX-1";
-//    line_list_bad.header.stamp = line_list_possible.header.stamp = line_list_good.header.stamp = ros::Time::now();
-//    line_list_bad.ns = line_list_possible.ns =line_list_good.ns = "points_and_lines";
-//    line_list_bad.action = line_list_possible.action =line_list_good.action =visualization_msgs::Marker::ADD;
-//    line_list_bad.pose.orientation.w = line_list_possible.pose.orientation.w =  line_list_good.pose.orientation.w = 1.0;
-//    line_list_bad.id = 0;
-//    line_list_possible.id = 1;
-//    line_list_good.id = 2;
-
-  if((timestamp.toSec() - oldTime) * currentSpeed > 0.2){
+  if((timestamp.toSec() - oldTime) * currentSpeed > 0.5){
     oldTime = timestamp.toSec();
 
     // Set width of lines
@@ -256,7 +242,6 @@ float z = (timestamp.toSec() - startTime) * currentSpeed;
 
     p.z = z;
 
-    //std::cout << "Z: " << p.z <<endl;
     //determite if the lines are considered good possible or bad
 
     for(int i = 0; i < numberOfLines; i++){
@@ -510,9 +495,9 @@ static void handleLines(lineRow_p lineRow){
               //std::cout<<"was here"<< endl;
             }
 
-            if(goodColumnsCounter >= (LANDING_FIELD_SIZE/LINE_PIECE_SIZE)){
-              std::cout << goodColumnsCounter/LINE_PIECE_SIZE << endl;
-            }
+//            if(goodColumnsCounter >= (LANDING_FIELD_SIZE/LINE_PIECE_SIZE)){
+//              std::cout << goodColumnsCounter/LINE_PIECE_SIZE << endl;
+//            }
 
 
             if(goodColumnsCounter >= (LANDING_FIELD_SIZE/LINE_PIECE_SIZE) && !upLinesChecker){ //Enough good Columns where detectet -> ah possible landing field
@@ -539,7 +524,7 @@ static void handleLines(lineRow_p lineRow){
               newPossLandField.velocity = lineRowArray[middleLine]->velocity;
               newPossLandField.z = lineRowArray[middleLine]->z;
               newPossLandField.hight = lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+(int)(goodColumnsCounter/2)].yStart;
-
+              newPossLandField.width = LANDING_FIELD_SIZE;
 
 #if (IS_SIMULATION == 4 || IS_SIMULATION == 6)
               std::cout << "currentEntries: " << currentEntries << endl;
@@ -560,9 +545,6 @@ static void handleLines(lineRow_p lineRow){
 
                 //publish it so it can be stored into the Array;
                 possibleLandingFieldsPub.publish(newPossLandField);
-
-
-
 
 #if (IS_SIMULATION ==3)
 
@@ -710,12 +692,13 @@ int main(int argc, char **argv)
   linePub = n.advertise<visualization_msgs::Marker>("filteredRowinLines", 1);
   possibleLandingFieldsPub = n.advertise<pcl_filter::LandingField>("possLandingFields",1);
 
-  //lineRowArray = new lineRow_p[SIZE_OF_ROW_BUFFER];
-
-#if (IS_SIMULATION == 1 || IS_SIMULATION == 6)
-  ros::Timer timer = n.createTimer(ros::Duration(1),publishLineList,false);
 
   startTime = ros::Time::now().toSec();
+
+#if (IS_SIMULATION == 1 || IS_SIMULATION == 6)
+  ros::Timer timer = n.createTimer(ros::Duration(2),publishLineList,false);
+
+
 
 
   line_list_bad.type = line_list_good.type = line_list_possible.type = visualization_msgs::Marker::LINE_LIST;

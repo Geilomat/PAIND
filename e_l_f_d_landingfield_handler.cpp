@@ -36,38 +36,22 @@ int currentEntries = 0;
  *
  * */
 static void mergeTwoLandingFields(possibleLandingField_p toBeMergedInto, possibleLandingField_p toBeMergedFrom){
-//  possibleLandingField_t mergedField;
-
-//  mergedField.mergeCounter = toBeMergedInto->mergeCounter + 1;
-
-//  //merge the fields
-//  mergedField.xPos = (toBeMergedInto->xPos * (toBeMergedInto->mergeCounter +1) + toBeMergedFrom->xPos)/(2+toBeMergedInto->mergeCounter);
-//  mergedField.time = toBeMergedInto->time;
-//  mergedField.hight = (toBeMergedInto->hight * (toBeMergedInto->mergeCounter +1)+ toBeMergedFrom->hight)/(2+toBeMergedInto->mergeCounter);
-//  mergedField.speed = (toBeMergedInto->speed * (toBeMergedInto->mergeCounter +1)+ toBeMergedFrom->speed)/(2+toBeMergedInto->mergeCounter);
-//  mergedField.z = (toBeMergedInto->z * (toBeMergedInto->mergeCounter +1) + toBeMergedFrom->z)/(2+toBeMergedInto->mergeCounter);
-//  int value = (toBeMergedInto->initValue + toBeMergedFrom->initValue)/2 + (50 * toBeMergedInto->mergeCounter +1); //Bonus cause of merging
-//  //if(value > MAX_VALUE) value = MAX_VALUE;
-//  mergedField.initValue = value;
-//  mergedField.value = mergedField.initValue; //reset the value cause of merging
-
 
   toBeMergedInto->mergeCounter ++;
-  toBeMergedInto->xPos = (toBeMergedInto->xPos * (toBeMergedInto->mergeCounter +1) + toBeMergedFrom->xPos)/(2+toBeMergedInto->mergeCounter);
-  toBeMergedInto->hight = (toBeMergedInto->hight * (toBeMergedInto->mergeCounter +1)+ toBeMergedFrom->hight)/(2+toBeMergedInto->mergeCounter);
-  toBeMergedInto->speed = (toBeMergedInto->speed * (toBeMergedInto->mergeCounter +1)+ toBeMergedFrom->speed)/(2+toBeMergedInto->mergeCounter);
-  toBeMergedInto->z =  (toBeMergedInto->z * (toBeMergedInto->mergeCounter +1) + toBeMergedFrom->z)/(2+toBeMergedInto->mergeCounter);
-  toBeMergedInto->value = (toBeMergedInto->initValue + toBeMergedFrom->initValue)/2 + (50 * (toBeMergedInto->mergeCounter +1));
+  toBeMergedInto->xPos = (toBeMergedInto->xPos * (toBeMergedInto->mergeCounter) + toBeMergedFrom->xPos)/(1+toBeMergedInto->mergeCounter);
+  toBeMergedInto->length = (toBeMergedInto->length * toBeMergedInto->mergeCounter + toBeMergedFrom->length)/(1+toBeMergedInto->mergeCounter);
+  toBeMergedInto->width = toBeMergedInto->width + toBeMergedFrom->width - ((toBeMergedInto->z + toBeMergedInto->width/2) -(toBeMergedFrom->z - toBeMergedFrom->width/2)) ; //toBeMergedInto->width + (LINE_PIECE_SIZE -(LINE_PIECE_SIZE - (toBeMergedFrom->z - toBeMergedInto->z)));
+  toBeMergedInto->hight = (toBeMergedInto->hight * (toBeMergedInto->mergeCounter)+ toBeMergedFrom->hight)/(1+toBeMergedInto->mergeCounter);
+  toBeMergedInto->speed = (toBeMergedInto->speed * (toBeMergedInto->mergeCounter)+ toBeMergedFrom->speed)/(1+toBeMergedInto->mergeCounter);
+  toBeMergedInto->z =  (toBeMergedInto->z * (toBeMergedInto->mergeCounter) + toBeMergedFrom->z)/(1+toBeMergedInto->mergeCounter);
+  toBeMergedInto->value = (toBeMergedInto->initValue + toBeMergedFrom->initValue)/2 + (50 * toBeMergedInto->mergeCounter);
   toBeMergedInto->initValue = toBeMergedInto->value;
-
+#if (IS_SIMULATION == 6)
   std::cout << "merged: X: "<< toBeMergedInto->xPos <<
                " Z: " << toBeMergedInto->z <<
                "\t and: X: " << toBeMergedFrom->xPos<<
                " Z: " <<toBeMergedFrom->z << endl;
-             // "\t into: X " << mergedField.xPos<<
-             //  " Z: " << mergedField.z<< endl;
-  //save the new values into the first parameter
-  //*toBeMergedInto = mergedField;
+#endif
 }
 
 
@@ -76,7 +60,6 @@ static void mergeTwoLandingFields(possibleLandingField_p toBeMergedInto, possibl
 
 static void addNewLandingField(pcl_filter::LandingField landingField){
   //create a container for the data and fill it
-
 
 #if (IS_SIMULATION == 4)
   std::cout << "LandingField recieved !! \n"
@@ -98,6 +81,7 @@ static void addNewLandingField(pcl_filter::LandingField landingField){
   inputLandingField.z = landingField.z;
   inputLandingField.hight = landingField.hight;
   inputLandingField.length = landingField.length;
+  inputLandingField.width = landingField.width;
   inputLandingField.mergeCounter = 0;
 
 #if (IS_SIMULATION == 5)
@@ -143,24 +127,20 @@ static void addNewLandingField(pcl_filter::LandingField landingField){
 
     //search throu the landingField array to find mergable landingfields and if so merge them.
 
-//    for(int j = 0; j < currentEntries; j++){
+    for(int j = 0; j < currentEntries; j++){
 
-//      int zDistance = inputLandingField.z - posLandingFieldArray[j].z; // inputLandingFields z value should always be same or greater then the entry form the array.
-//      if(zDistance <= LANDING_FIELD_SIZE){
-//        float x
-//      }
-//    }
-
-//      int xDistance = abs(posLandingFieldArray[j].xPos - inputLandingField.xPos);
-//      if(xDistance <= LANDING_FIELD_SIZE){
-
-//       int zDistance = inputLandingField.z - posLandingFieldArray[j].z; // inputLandingFields z value should always be same or greater then the entry form the array.
-//       if(zDistance <= LANDING_FIELD_SIZE){
-//         mergeTwoLandingFields(&posLandingFieldArray[j], &inputLandingField);
-//         return;
-//       }
-//      }
-//    }
+      int zDistance = inputLandingField.z - posLandingFieldArray[j].z; // inputLandingFields z value should always be same or greater then the entry form the array.
+      if(zDistance <= (posLandingFieldArray[j].width/2 + LANDING_FIELD_SIZE/2)){
+        float xDistance =  abs(posLandingFieldArray[j].xPos - inputLandingField.xPos);
+        if(xDistance <= LANDING_FIELD_SIZE){
+          float lengthDiff = abs(posLandingFieldArray[j].length - inputLandingField.length);
+          if(lengthDiff < LANDING_FIELD_SIZE){
+            mergeTwoLandingFields(&posLandingFieldArray[j], &inputLandingField);
+            return;
+          }
+        }
+      }
+    }
 
 
 
@@ -217,8 +197,8 @@ static void updateLandingFieldArray(const ros::TimerEvent& event){
   if(currentEntries > 1){
     //Use forgettingfunction to give the entries new values
     for(int i = 0; i<currentEntries ; i++){
-      int newValue = posLandingFieldArray[i].value - (currentEntries * 2 + currentSpeed + (MAX_VALUE - posLandingFieldArray[i].initValue)/10);
-      if(newValue > MIN_VALUE && newValue < MAX_VALUE){
+      int newValue = posLandingFieldArray[i].value - (currentEntries * 2 + currentSpeed + (MAX_VALUE_FIELD - posLandingFieldArray[i].initValue)/10);
+      if(newValue > MIN_VALUE && newValue < MAX_VALUE_FIELD){
         posLandingFieldArray[i].value = newValue;
       }
       else{
@@ -255,46 +235,76 @@ static void updateLandingFieldArray(const ros::TimerEvent& event){
   std::cout <<"value: " << posLandingFieldArray[i].value <<
               "\tinitValue: " << posLandingFieldArray[i].initValue<<
               "\t xPos: " << posLandingFieldArray[i].xPos <<
-              //"\t time: " << posLandingFieldArray[i].time <<
-              "\t velocity: " << posLandingFieldArray[i].speed <<
+              "\t time: " << posLandingFieldArray[i].time <<
+              "\n velocity: " << posLandingFieldArray[i].speed <<
               "\t z: "  << posLandingFieldArray[i].z<<
               "\t hight: " << posLandingFieldArray[i].hight <<
               "\t length: " << posLandingFieldArray[i].length <<
-              "\t mergeCounter: "<< posLandingFieldArray[i].mergeCounter << endl;
+              "\t width: " << posLandingFieldArray[i].width<<
+              "\t mergeCounter: "<< posLandingFieldArray[i].mergeCounter <<
+              "\n" << endl;
   }
 
 #endif
 #if(IS_SIMULATION == 6)
   visualization_msgs::MarkerArray posLandingFields;
-  posLandingFields.markers.resize(currentEntries);
+  posLandingFields.markers.resize(currentEntries*2);
 
+  // Fill the Marker Array with the possible LandingFields in blue
   for(int i = 0; i < currentEntries; i++){
+    posLandingFields.markers[i].type = visualization_msgs::Marker::CUBE;
+    posLandingFields.markers[i].lifetime = ros::Duration(3,0);
+    posLandingFields.markers[i].header.frame_id = "VUX-1";
+    posLandingFields.markers[i].header.stamp = ros::Time::now();
+    posLandingFields.markers[i].ns = "posLandingField";
+    posLandingFields.markers[i].action =  visualization_msgs::Marker::ADD;
+    posLandingFields.markers[i].pose.orientation.w = 1.0;
+    posLandingFields.markers[i].id = i;
 
-  //visualization_msgs::Marker posLandingField;
-  posLandingFields.markers[i].type = visualization_msgs::Marker::CUBE;
-  posLandingFields.markers[i].lifetime = ros::Duration(5,0);
-  posLandingFields.markers[i].header.frame_id = "VUX-1";
-  posLandingFields.markers[i].header.stamp = ros::Time::now();
-  posLandingFields.markers[i].ns = "posLandingField";
-  posLandingFields.markers[i].action =  visualization_msgs::Marker::ADD;
-  posLandingFields.markers[i].pose.orientation.w = 1.0;
-  posLandingFields.markers[i].id = i;
+    // Set width of lines
+    posLandingFields.markers[i].scale.x = posLandingFieldArray[i].length;
+    posLandingFields.markers[i].scale.y = 0.2;
+    posLandingFields.markers[i].scale.z = posLandingFieldArray[i].width;
 
-  // Set width of lines
-  posLandingFields.markers[i].scale.x = posLandingFieldArray[i].length;
-  posLandingFields.markers[i].scale.y = 0.2;
-  posLandingFields.markers[i].scale.z = LANDING_FIELD_SIZE;
+    // Make them blue
+    posLandingFields.markers[i].color.b = 0.5f;
+    posLandingFields.markers[i].color.a = 0.6;
+
+    // Set position
+    posLandingFields.markers[i].pose.position.x = posLandingFieldArray[i].xPos;
+    posLandingFields.markers[i].pose.position.y = posLandingFieldArray[i].hight;
+    posLandingFields.markers[i].pose.position.z = posLandingFieldArray[i].z;
+  }
+
+  //fill the Markers with the corresponding number in white
+  for(int i= 0; i < currentEntries; i++){
+
+    posLandingFields.markers[i+currentEntries].type = visualization_msgs::Marker::TEXT_VIEW_FACING;
+    posLandingFields.markers[i+currentEntries].lifetime = ros::Duration(3,0);
+    posLandingFields.markers[i+currentEntries].header.frame_id = "VUX-1";
+    posLandingFields.markers[i+currentEntries].header.stamp = ros::Time::now();
+    posLandingFields.markers[i+currentEntries].ns = "posLandingField";
+    posLandingFields.markers[i+currentEntries].action =  visualization_msgs::Marker::ADD;
+    posLandingFields.markers[i+currentEntries].pose.orientation.w = 1.0;
+    posLandingFields.markers[i+currentEntries].id = i+currentEntries;
+    std::stringstream number;
+    number << i+1;
+    posLandingFields.markers[i+currentEntries].text = number.str();
+
+    // Set width of lines
+    posLandingFields.markers[i+currentEntries].scale.z = 10;
 
 
-  // Make them blue
-  posLandingFields.markers[i].color.b = 0.5f;
-  posLandingFields.markers[i].color.a = 0.6;
+    // Make them white
+    posLandingFields.markers[i+currentEntries].color.b = 1;
+    posLandingFields.markers[i+currentEntries].color.r = 1;
+    posLandingFields.markers[i+currentEntries].color.g = 1;
+    posLandingFields.markers[i+currentEntries].color.a = 1;
 
-  // Set position
-  posLandingFields.markers[i].pose.position.x = posLandingFieldArray[i].xPos;
-  posLandingFields.markers[i].pose.position.y = posLandingFieldArray[i].hight;
-  posLandingFields.markers[i].pose.position.z = posLandingFieldArray[i].z;
-
+    // Set position
+    posLandingFields.markers[i+currentEntries].pose.position.x = posLandingFieldArray[i].xPos;
+    posLandingFields.markers[i+currentEntries].pose.position.y = posLandingFieldArray[i].hight;
+    posLandingFields.markers[i+currentEntries].pose.position.z = posLandingFieldArray[i].z;
   }
   LandingFields.publish(posLandingFields);
 #endif
@@ -341,9 +351,11 @@ int main(int argc, char **argv)
   ros::Subscriber sub = n.subscribe("possLandingFields",10,addNewLandingField);
   //ros::Subscriber sub4 = n.subscribe("UAV_velocity",1,updateVelocity);
 // %EndTag(SUBSCRIBER)%
-  ros::Timer timer = n.createTimer(ros::Duration(5),updateLandingFieldArray,false);
+
+  // create a timer which calls the sorting-function periodically
+  ros::Timer timer = n.createTimer(ros::Duration(3),updateLandingFieldArray,false);
+
   // Create a ROS publisher for the output point cloud
- // posLandingFieldArray = new possibleLandingField_p[NUMBER_OF_POSSIBLE_LANDING_FIELDS];
 #if (IS_SIMULATION == 5)
   LandingFields = n.advertise<visualization_msgs::Marker>("LandingFields", 1);
 #elif (IS_SIMULATION == 6)
