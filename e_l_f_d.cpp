@@ -435,11 +435,10 @@ static void handleLines(lineRow_p lineRow){
           int upLinesChecker = 0;
           int goodColumnsCounter = 0;
           int landingFieldSize = 0;
-          int hight = 0;
           long landingFieldValue = 0;
-          int landingFieldLength = 0;
           int startingPoints[currentEntries];
           int goodColumns = 1;
+          float slope = 0;
           //int64_t xCenterPos = 0xFFFFFFFFFFFFFFFF; //this way it can be safely detected if the variable was writen or not. (0xFFFFFFFFFFFFFFFF should never occur in a normal running programm)
           while(goodColumns){
             if(lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer].value < MIN_VALUE){
@@ -455,7 +454,6 @@ static void handleLines(lineRow_p lineRow){
               int j = 0;
               //std::cout << "2"<<  endl;
               if(indexer == 0){
-
                 while(lineRowArray[y]->LineRow[j].x != possibleLandingSides[i][0] && upLinesChecker){  //find the line in the upper lineRow with the same x position as the one at the bottom of the Array
                   j++;
                   if(j >= (lineRowArray[y]->numberOfLines -1)){upLinesChecker = 0;}
@@ -499,24 +497,21 @@ static void handleLines(lineRow_p lineRow){
 #endif
               }
             if(upLinesChecker){ // if all upper lines were also good.
-              goodColumnsCounter ++;
+              slope = abs(lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer].yStart - lineRowArray[lineRowArrayIndexerEnd]->LineRow[startingPoints[z-1]+indexer].yStart)/LANDING_FIELD_SIZE;
+               //std::cout << "slope: "<< slope << endl;
+              if(slope < MAX_ACCEPTED_SLOPE){ //check if slope in z-axis is also good.
+                goodColumnsCounter ++;
+              }
             }
             else if(goodColumnsCounter < LANDING_FIELD_SIZE/LINE_PIECE_SIZE){
-              landingFieldLength = 0;
               landingFieldSize = 0;
               landingFieldValue  = 0;
               goodColumnsCounter = 0;
-              hight = 0;
               //std::cout<<"was here"<< endl;
             }
 
-            if(goodColumnsCounter >= ((LANDING_FIELD_SIZE/2)/LINE_PIECE_SIZE) ){ //&& xCenterPos == 0xFFFFFFFFFFFFFFFF){ //save the center of the Landing field
-              //xCenterPos = lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer-goodColumnsCounter].x + (LANDING_FIELD_SIZE/2); //This equals the center of the landingField by a 10 * 10m field.
-              hight = lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer].yStart;
-            }
             if(goodColumnsCounter >= (LANDING_FIELD_SIZE/LINE_PIECE_SIZE)){
-              landingFieldLength = goodColumnsCounter/LINE_PIECE_SIZE;
-              std::cout << landingFieldLength << endl;
+              std::cout << goodColumnsCounter/LINE_PIECE_SIZE << endl;
             }
 
 
@@ -524,39 +519,36 @@ static void handleLines(lineRow_p lineRow){
               //publish here a possible landing field with the array of the lines -> value, time, speed etc.
 
               //check first if slope on the sides is okay:
-              float leftSideSlope = abs(lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer-goodColumnsCounter].yStart - lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer].yStart)/LANDING_FIELD_SIZE;
-              float rightSideSlope = abs(lineRowArray[lineRowArrayIndexerEnd]->LineRow[possibleLandingSides[i][1]+indexer-goodColumnsCounter].yStart - lineRowArray[lineRowArrayIndexerEnd]->LineRow[possibleLandingSides[i][1]+indexer].yStart)/LANDING_FIELD_SIZE;
+              //float leftSideSlope = abs(lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer-goodColumnsCounter].yStart - lineRowArray[lineRowArrayIndexerEnd]->LineRow[possibleLandingSides[i][1]+indexer].yStart)/LANDING_FIELD_SIZE;
+              //float rightSideSlope = abs(lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer-goodColumnsCounter].yStart - lineRowArray[lineRowArrayIndexerEnd]->LineRow[possibleLandingSides[i][1]+indexer].yStart)/LANDING_FIELD_SIZE;
 
-              if(leftSideSlope <= MAX_ACCEPTED_SLOPE && rightSideSlope <= MAX_ACCEPTED_SLOPE){
+              //if(leftSideSlope <= MAX_ACCEPTED_SLOPE && rightSideSlope <= MAX_ACCEPTED_SLOPE){
 
                 //make a container for the LandingField and fill it with the right values:
-                pcl_filter::LandingField newPossLandField;
+              pcl_filter::LandingField newPossLandField;
 
-                std::cout << "tada " << landingFieldLength << endl;
-                newPossLandField.value = (landingFieldValue/landingFieldSize) - (leftSideSlope * 100) - (rightSideSlope * 100) + (goodColumnsCounter - LANDING_FIELD_SIZE/LINE_PIECE_SIZE)*50;
-                newPossLandField.xPos = lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer].x;// - (landingFieldLength/2);
-                int middleLine = lineRowArrayIndexerStart + currentEntries/2;
-                if(middleLine >= SIZE_OF_ROW_BUFFER-1){
-                  middleLine = currentEntries/2 - (SIZE_OF_ROW_BUFFER-1-lineRowArrayIndexerStart);
-                }
-                std::cout << "whaat " << landingFieldLength << endl;
-                newPossLandField.timestamp = lineRowArray[middleLine]->timestamp;
-                newPossLandField.velocity = lineRowArray[middleLine]->velocity;
-                newPossLandField.z = lineRowArray[middleLine]->z;
-                newPossLandField.hight = hight;
-                newPossLandField.length = goodColumnsCounter/LINE_PIECE_SIZE;
+              std::cout << "tada " << goodColumnsCounter/LINE_PIECE_SIZE << endl;
+              newPossLandField.value = (landingFieldValue/landingFieldSize) - (slope * 100) + (goodColumnsCounter - LANDING_FIELD_SIZE/LINE_PIECE_SIZE)*10;
+              newPossLandField.length = goodColumnsCounter/LINE_PIECE_SIZE;
+              newPossLandField.xPos = lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer].x -  (newPossLandField.length/2);
+              int middleLine = lineRowArrayIndexerStart + currentEntries/2;
+              if(middleLine >= SIZE_OF_ROW_BUFFER-1){
+                middleLine = currentEntries/2 - (SIZE_OF_ROW_BUFFER-1-lineRowArrayIndexerStart);
+              }
+              newPossLandField.timestamp = lineRowArray[middleLine]->timestamp;
+              newPossLandField.velocity = lineRowArray[middleLine]->velocity;
+              newPossLandField.z = lineRowArray[middleLine]->z;
+              newPossLandField.hight = lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+(int)(goodColumnsCounter/2)].yStart;
 
 
 #if (IS_SIMULATION == 4 || IS_SIMULATION == 6)
-                std::cout << "currentEntries: " << currentEntries << endl;
-                std::cout << "lineRowArrayIndexerStart: " << lineRowArrayIndexerStart  << endl;
-                std::cout << "lineRowArrayIndexerEnd: " << lineRowArrayIndexerEnd  << endl;
-                std::cout << "middleLine: " << middleLine <<"\t z: " << lineRowArray[middleLine]->z << endl;
-                std::cout << "x1: " << lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer].x -(LANDING_FIELD_SIZE/2) << "\t x2: " <<
-                                    lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer-goodColumnsCounter].x + (LANDING_FIELD_SIZE/2) << endl;
-                std::cout << "Landingfield:  value: " << newPossLandField.value <<
-                             "\t leftSlope: " << leftSideSlope <<
-                             "\t rightSlope: " <<rightSideSlope <<
+              std::cout << "currentEntries: " << currentEntries << endl;
+              std::cout << "lineRowArrayIndexerStart: " << lineRowArrayIndexerStart  << endl;
+              std::cout << "lineRowArrayIndexerEnd: " << lineRowArrayIndexerEnd  << endl;
+              std::cout << "middleLine: " << middleLine <<"\t z: " << lineRowArray[middleLine]->z << endl;
+              std::cout << "Landingfield:  value: " << newPossLandField.value <<
+                             "\t hight: " << newPossLandField.hight<<
+                             "\t slope: " << slope <<
                              "\t GValue: "  <<landingFieldValue <<
                              "\t size: "  << landingFieldSize<<
                              "\t z: " << newPossLandField.z <<
@@ -585,12 +577,10 @@ static void handleLines(lineRow_p lineRow){
                 p.x = lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer].x;
                 line_list_good.points.push_back(p);
 #endif
-              }
+              //}
               landingFieldSize = 0;
               landingFieldValue  = 0;
               goodColumnsCounter = 0;
-              hight = 0;
-              landingFieldLength = 0;
             }
 
 

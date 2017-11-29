@@ -6,6 +6,7 @@
 using namespace std;
 // PCL specific includes
 #include <visualization_msgs/Marker.h>
+#include <visualization_msgs/MarkerArray.h>
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl-1.7/pcl/point_types.h>
@@ -25,7 +26,7 @@ using namespace std;
 
 
 //possibleLandingField_p* posLandingFieldArray; //Array where the possible landing sides are stored;
-ros::Publisher linePubLandingFields;
+ros::Publisher LandingFields;
 possibleLandingField_t posLandingFieldArray[NUMBER_OF_POSSIBLE_LANDING_FIELDS];
 float currentSpeed = 5.0;       //Current speed of the Drone needs to be updated ! [mm]
 //int minValue = 500;              //min value which each line needs to have to be considered as good
@@ -129,7 +130,7 @@ static void addNewLandingField(pcl_filter::LandingField landingField){
   p.x = inputLandingField.xPos  + LANDING_FIELD_SIZE/2;
   posLandingField.points.push_back(p);
 
-  linePubLandingFields.publish(posLandingField);
+  LandingField1.publish(posLandingField);
 #endif
 
   //iterate trough the array and fing the right place for the given landingField.
@@ -143,6 +144,12 @@ static void addNewLandingField(pcl_filter::LandingField landingField){
     //search throu the landingField array to find mergable landingfields and if so merge them.
 
 //    for(int j = 0; j < currentEntries; j++){
+
+//      int zDistance = inputLandingField.z - posLandingFieldArray[j].z; // inputLandingFields z value should always be same or greater then the entry form the array.
+//      if(zDistance <= LANDING_FIELD_SIZE){
+//        float x
+//      }
+//    }
 
 //      int xDistance = abs(posLandingFieldArray[j].xPos - inputLandingField.xPos);
 //      if(xDistance <= LANDING_FIELD_SIZE){
@@ -258,40 +265,38 @@ static void updateLandingFieldArray(const ros::TimerEvent& event){
 
 #endif
 #if(IS_SIMULATION == 6)
+  visualization_msgs::MarkerArray posLandingFields;
+  posLandingFields.markers.resize(currentEntries);
 
-  visualization_msgs::Marker posLandingField;
-  posLandingField.type = visualization_msgs::Marker::CUBE_LIST;
-//  posLandingField.lifetime = ros::Duration(5,0);
-  posLandingField.header.frame_id = "VUX-1";
-  posLandingField.header.stamp = ros::Time::now();
-  posLandingField.ns = "posLandingField";
-  posLandingField.action =visualization_msgs::Marker::ADD;
-  posLandingField.pose.orientation.w = 1.0;
-  posLandingField.id = 0;
+  for(int i = 0; i < currentEntries; i++){
+
+  //visualization_msgs::Marker posLandingField;
+  posLandingFields.markers[i].type = visualization_msgs::Marker::CUBE;
+  posLandingFields.markers[i].lifetime = ros::Duration(5,0);
+  posLandingFields.markers[i].header.frame_id = "VUX-1";
+  posLandingFields.markers[i].header.stamp = ros::Time::now();
+  posLandingFields.markers[i].ns = "posLandingField";
+  posLandingFields.markers[i].action =  visualization_msgs::Marker::ADD;
+  posLandingFields.markers[i].pose.orientation.w = 1.0;
+  posLandingFields.markers[i].id = i;
 
   // Set width of lines
-  posLandingField.scale.x = 10;
-  posLandingField.scale.y = 0.2;
-  posLandingField.scale.z = 10;
+  posLandingFields.markers[i].scale.x = posLandingFieldArray[i].length;
+  posLandingFields.markers[i].scale.y = 0.2;
+  posLandingFields.markers[i].scale.z = LANDING_FIELD_SIZE;
 
 
   // Make them blue
-  posLandingField.color.b = 0.5f;
-  posLandingField.color.a = 0.6;
+  posLandingFields.markers[i].color.b = 0.5f;
+  posLandingFields.markers[i].color.a = 0.6;
 
-  for(int i = 0; i < currentEntries; i++){
-    geometry_msgs::Point p;
-    p.x = posLandingFieldArray[i].xPos;
-    p.y = posLandingFieldArray[i].hight;
-    p.z = posLandingFieldArray[i].z;
-
-    posLandingField.points.push_back(p);
+  // Set position
+  posLandingFields.markers[i].pose.position.x = posLandingFieldArray[i].xPos;
+  posLandingFields.markers[i].pose.position.y = posLandingFieldArray[i].hight;
+  posLandingFields.markers[i].pose.position.z = posLandingFieldArray[i].z;
 
   }
-
-
-
-  linePubLandingFields.publish(posLandingField);
+  LandingFields.publish(posLandingFields);
 #endif
 }
 
@@ -339,7 +344,12 @@ int main(int argc, char **argv)
   ros::Timer timer = n.createTimer(ros::Duration(5),updateLandingFieldArray,false);
   // Create a ROS publisher for the output point cloud
  // posLandingFieldArray = new possibleLandingField_p[NUMBER_OF_POSSIBLE_LANDING_FIELDS];
-  linePubLandingFields = n.advertise<visualization_msgs::Marker>("posLandingFields", 1);
+#if (IS_SIMULATION == 5)
+  LandingFields = n.advertise<visualization_msgs::Marker>("LandingFields", 1);
+#elif (IS_SIMULATION == 6)
+  LandingFields = n.advertise<visualization_msgs::MarkerArray>("LandingFields", 1);
+#endif
+
 
   /**
    * ros::spin() will enter a loop, pumping callbacks.  With this version, all
