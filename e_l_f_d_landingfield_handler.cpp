@@ -31,20 +31,35 @@ int currentEntries = 0;
  * */
 static void mergeTwoLandingFields(possibleLandingField_p toBeMergedInto, possibleLandingField_p toBeMergedFrom){
 
+#if (IS_SIMULATION == 5)
+  std::cout << "merge: X: "<< toBeMergedInto->xPos <<
+               "\t Z: " << toBeMergedInto->z <<
+               "\t value: " << toBeMergedInto->value <<
+               "\t lenght: " << toBeMergedInto->length <<
+               "\t width: " << toBeMergedInto->width <<
+               "\n and: X: " << toBeMergedFrom->xPos<<
+               "\t Z: "    << toBeMergedFrom->z <<
+               "\t value: " << toBeMergedFrom->value <<
+               "\t lenght: " << toBeMergedFrom->length <<
+               "\t width: " << toBeMergedFrom->width << endl;
+#endif
+
   toBeMergedInto->mergeCounter ++;
   toBeMergedInto->xPos = (toBeMergedInto->xPos * (toBeMergedInto->mergeCounter) + toBeMergedFrom->xPos)/(1+toBeMergedInto->mergeCounter);
   toBeMergedInto->length = (toBeMergedInto->length * toBeMergedInto->mergeCounter + toBeMergedFrom->length)/(1+toBeMergedInto->mergeCounter);
-  toBeMergedInto->width = toBeMergedInto->width + toBeMergedFrom->width - ((toBeMergedInto->z + toBeMergedInto->width/2) -(toBeMergedFrom->z - toBeMergedFrom->width/2)) ; //toBeMergedInto->width + (LINE_PIECE_SIZE -(LINE_PIECE_SIZE - (toBeMergedFrom->z - toBeMergedInto->z)));
-  toBeMergedInto->hight = (toBeMergedInto->hight * (toBeMergedInto->mergeCounter)+ toBeMergedFrom->hight)/(1+toBeMergedInto->mergeCounter);
+  toBeMergedInto->width = toBeMergedInto->width + toBeMergedFrom->width - ((toBeMergedInto->z + toBeMergedInto->width/2) -(toBeMergedFrom->z - toBeMergedFrom->width/2)) ;
   toBeMergedInto->speed = (toBeMergedInto->speed * (toBeMergedInto->mergeCounter)+ toBeMergedFrom->speed)/(1+toBeMergedInto->mergeCounter);
   toBeMergedInto->z =  (toBeMergedInto->z * (toBeMergedInto->mergeCounter) + toBeMergedFrom->z)/(1+toBeMergedInto->mergeCounter);
   toBeMergedInto->value = (toBeMergedInto->initValue + toBeMergedFrom->initValue)/2 + (50 * toBeMergedInto->mergeCounter);
   toBeMergedInto->initValue = toBeMergedInto->value;
-#if (IS_SIMULATION == 6)
-  std::cout << "merged: X: "<< toBeMergedInto->xPos <<
-               " Z: " << toBeMergedInto->z <<
-               "\t and: X: " << toBeMergedFrom->xPos<<
-               " Z: " <<toBeMergedFrom->z << endl;
+
+#if (IS_SIMULATION == 5)
+  std::cout << "into : X: "<< toBeMergedInto->xPos <<
+               "\t Z: " << toBeMergedInto->z <<
+               "\t value: " << toBeMergedInto->value <<
+               "\t lenght: " << toBeMergedInto->length <<
+               "\t width: " << toBeMergedInto->width << endl;
+
 #endif
 }
 
@@ -61,6 +76,7 @@ static void addNewLandingField(pcl_filter::LandingField landingField){
               "\t xPos: " << landingField.xPos <<
               "\t time: " << landingField.timestamp <<
               "\t speed: " << landingField.velocity <<
+              "\n z: "    <<landingField.z <<
               "\t hight: " << landingField.hight <<
               "\t length: " << landingField.length << endl;
   std::cout << "currentEntriesNewLine. " << currentEntries <<endl;
@@ -76,6 +92,7 @@ static void addNewLandingField(pcl_filter::LandingField landingField){
   inputLandingField.hight = landingField.hight;
   inputLandingField.length = landingField.length;
   inputLandingField.width = landingField.width;
+  inputLandingField.turnCounter = landingField.turnCounter;
   inputLandingField.mergeCounter = 0;
 
 #if (IS_SIMULATION == 5)
@@ -122,15 +139,16 @@ static void addNewLandingField(pcl_filter::LandingField landingField){
     //search throu the landingField array to find mergable landingfields and if so merge them.
 
     for(int j = 0; j < currentEntries; j++){
-
-      int zDistance = inputLandingField.z - posLandingFieldArray[j].z; // inputLandingFields z value should always be same or greater then the entry form the array.
-      if(zDistance <= (posLandingFieldArray[j].width/2 + LANDING_FIELD_SIZE/2)){ //check if z distanzc isn't too far
-        float xDistance =  abs(posLandingFieldArray[j].xPos - inputLandingField.xPos);
-        if(xDistance <= LANDING_FIELD_SIZE){ //Check if x distance is also acceptable
-          float lengthDiff = abs(posLandingFieldArray[j].length - inputLandingField.length);
-          if(lengthDiff < (LANDING_FIELD_SIZE * 2)){ //Ckeck if there is a maxiaml length difference of 2 min sized LandingFields
-            mergeTwoLandingFields(&posLandingFieldArray[j], &inputLandingField);
-            return;
+      if(posLandingFieldArray[j].mergeCounter < 5 && posLandingFieldArray[j].turnCounter == inputLandingField.turnCounter){
+        int zDistance = inputLandingField.z - posLandingFieldArray[j].z; // inputLandingFields z value should always be same or greater then the entry form the array.
+        if(zDistance <= (posLandingFieldArray[j].width/2 + LANDING_FIELD_SIZE/2)){ //check if z distanzc isn't too far
+          float xDistance =  abs(posLandingFieldArray[j].xPos - inputLandingField.xPos);
+          if(xDistance <= LANDING_FIELD_SIZE){ //Check if x distance is also acceptable
+            float lengthDiff = abs(posLandingFieldArray[j].length - inputLandingField.length);
+            if(lengthDiff < LANDING_FIELD_SIZE){ //Ckeck if there is a maxiaml length difference of 2 min sized LandingFields
+              mergeTwoLandingFields(&posLandingFieldArray[j], &inputLandingField);
+              return;
+            }
           }
         }
       }
@@ -176,22 +194,18 @@ static void addNewLandingField(pcl_filter::LandingField landingField){
 }
 
 
-static void updateCurrentSpeed(std_msgs::Int32 newSpeed){
-  currentSpeed = newSpeed.data;
-}
 
 
 static void updateLandingFieldArray(const ros::TimerEvent& event){
 
 #if (IS_SIMULATION == 5)
-  //std::cout << "updateLandingFieldArray was called" << endl;
     std::cout << "currentEntriesUpdate " << currentEntries <<endl;
 #endif
   // Function is only needed if there are more then one landing field in the array
   if(currentEntries > 1){
     //Use forgettingfunction to give the entries new values
     for(int i = 0; i<currentEntries ; i++){
-      int newValue = posLandingFieldArray[i].value - (currentEntries * 2 + currentSpeed + (MAX_VALUE_FIELD - posLandingFieldArray[i].initValue)/10);
+      int newValue = posLandingFieldArray[i].value - (currentEntries + currentSpeed + (MAX_VALUE_FIELD - posLandingFieldArray[i].initValue)/10);
       if(newValue > MIN_VALUE && newValue < MAX_VALUE_FIELD){
         posLandingFieldArray[i].value = newValue;
       }
@@ -226,17 +240,48 @@ static void updateLandingFieldArray(const ros::TimerEvent& event){
 #if (IS_SIMULATION > 0)
   std::cout <<"posLandingFieldArray entries:" << endl;
   for(int i= 0 ; i < currentEntries; i++){
-  std::cout <<"value: " << posLandingFieldArray[i].value <<
-              "\tinitValue: " << posLandingFieldArray[i].initValue<<
-              "\t xPos: " << posLandingFieldArray[i].xPos <<
-              "\t time: " << posLandingFieldArray[i].time <<
-              "\n velocity: " << posLandingFieldArray[i].speed <<
-              "\t z: "  << posLandingFieldArray[i].z<<
-              "\t hight: " << posLandingFieldArray[i].hight <<
-              "\t length: " << posLandingFieldArray[i].length <<
-              "\t width: " << posLandingFieldArray[i].width<<
-              "\t mergeCounter: "<< posLandingFieldArray[i].mergeCounter <<
+  std::cout <<"value:" << posLandingFieldArray[i].value <<
+              "\tinitVal:" << posLandingFieldArray[i].initValue<<
+              "\txPos:" << posLandingFieldArray[i].xPos <<
+              "\ttime:" << posLandingFieldArray[i].time <<
+              "\tspeed:" << posLandingFieldArray[i].speed <<
+              "\nz:"  << posLandingFieldArray[i].z<<
+              "\thight:" << posLandingFieldArray[i].hight <<
+              "\tlength:" << posLandingFieldArray[i].length <<
+              "\twidth:" << posLandingFieldArray[i].width<<
+              "\tmergeCnt:"<< posLandingFieldArray[i].mergeCounter <<
+              "\tturnCnt:" <<posLandingFieldArray[i].turnCounter <<
               "\n" << endl;
+  }
+
+#endif
+
+#if (IS_SIMULATION == 7)
+
+
+  static int Counter = 0;
+  if(currentEntries > 0){
+  std::ofstream file_stream;
+  file_stream.open("LandingFields.txt",ios_base::app);
+  file_stream << "Entry Nbr: " << Counter <<
+               "\n posLandingFieldArray entries:" << endl;
+  for(int i= 0 ; i < currentEntries; i++){
+  file_stream <<"Nr." << i <<
+              "\tvalue:" << posLandingFieldArray[i].value <<
+              "\tinitVal:" << posLandingFieldArray[i].initValue<<
+              "\txPos:" << posLandingFieldArray[i].xPos <<
+              "\ttime:" << posLandingFieldArray[i].time <<
+              "\tspeed:" << posLandingFieldArray[i].speed <<
+              "\nz:"  << posLandingFieldArray[i].z<<
+              "\thight:" << posLandingFieldArray[i].hight <<
+              "\tlength:" << posLandingFieldArray[i].length <<
+              "\twidth:" << posLandingFieldArray[i].width <<
+              "\tmergeCnt:"<< posLandingFieldArray[i].mergeCounter <<
+              "\tturnCnt:" << posLandingFieldArray[i].turnCounter <<
+              "\n" << endl;
+  }
+  Counter ++;
+  file_stream.close();
   }
 
 #endif
@@ -304,6 +349,16 @@ static void updateLandingFieldArray(const ros::TimerEvent& event){
 #endif
 }
 
+static void updateCurrentSpeed(std_msgs::Int32 newSpeed){
+  currentSpeed = newSpeed.data;
+}
+
+static void turnOccured(std_msgs::Int32 turnNbr){
+  std::ofstream file_stream;
+  file_stream.open("LandingFields.txt",ios_base::app);
+  file_stream << "\n Turn Occured. Z was set to 0 !! \n " << endl;
+  file_stream.close();
+}
 
 
 int main(int argc, char **argv)
@@ -343,7 +398,8 @@ int main(int argc, char **argv)
    */
 // %Tag(SUBSCRIBER)%
   ros::Subscriber sub = n.subscribe("possLandingFields",10,addNewLandingField);
-  //ros::Subscriber sub4 = n.subscribe("UAV_velocity",1,updateVelocity);
+  ros::Subscriber sub4 = n.subscribe("UAV_velocity",1,updateCurrentSpeed);
+  ros::Subscriber sub5 = n.subscribe("Turn_notification",1,turnOccured);
 // %EndTag(SUBSCRIBER)%
 
   // create a timer which calls the sorting-function periodically
@@ -356,7 +412,11 @@ int main(int argc, char **argv)
   LandingFields = n.advertise<visualization_msgs::MarkerArray>("LandingFields", 1);
 #endif
 
-
+#if (IS_SIMULATION == 7)
+  std::ofstream file_stream;
+  file_stream.open("LandingFields.txt",ios_base::trunc);
+  file_stream.close();
+#endif
   /**
    * ros::spin() will enter a loop, pumping callbacks.  With this version, all
    * callbacks will be called from within this thread (the main one).  ros::spin()
