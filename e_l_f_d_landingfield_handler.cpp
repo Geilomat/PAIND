@@ -3,6 +3,8 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <iomanip>
+#include <ctime>
 using namespace std;
 // PCL specific includes
 #include <visualization_msgs/Marker.h>
@@ -22,14 +24,15 @@ using namespace std;
 
 
 ros::Publisher LandingFields;
-possibleLandingField_t posLandingFieldArray[NUMBER_OF_POSSIBLE_LANDING_FIELDS];
-float currentSpeed = 5.0;       //Current speed of the Drone needs to be updated ! [mm]
+possibleLandingField_t landingFieldArray[NUMBER_OF_POSSIBLE_LANDING_FIELDS];
+float currentSpeed = 0.0;       //Current speed of the Drone needs to be updated ! [mm]
 int currentEntries = 0;
+char textFileName[50];
 
 /*\brief merges to neighbouring LandingFields and saves them into the pointer from the first !!
  *
  * */
-static void mergeTwoLandingFields(possibleLandingField_p toBeMergedInto, possibleLandingField_p toBeMergedFrom){
+static void mergeTwoLandingFields(possibleLandingField_p arrayLF, possibleLandingField_p inputLF){
 
 #if (IS_SIMULATION == 5)
   std::cout << "merge: X: "<< toBeMergedInto->xPos <<
@@ -44,14 +47,15 @@ static void mergeTwoLandingFields(possibleLandingField_p toBeMergedInto, possibl
                "\t width: " << toBeMergedFrom->width << endl;
 #endif
 
-  toBeMergedInto->mergeCounter ++;
-  toBeMergedInto->xPos = (toBeMergedInto->xPos * (toBeMergedInto->mergeCounter) + toBeMergedFrom->xPos)/(1+toBeMergedInto->mergeCounter);
-  toBeMergedInto->length = (toBeMergedInto->length * toBeMergedInto->mergeCounter + toBeMergedFrom->length)/(1+toBeMergedInto->mergeCounter);
-  toBeMergedInto->width = toBeMergedInto->width + toBeMergedFrom->width - ((toBeMergedInto->z + toBeMergedInto->width/2) -(toBeMergedFrom->z - toBeMergedFrom->width/2)) ;
-  toBeMergedInto->speed = (toBeMergedInto->speed * (toBeMergedInto->mergeCounter)+ toBeMergedFrom->speed)/(1+toBeMergedInto->mergeCounter);
-  toBeMergedInto->z =  (toBeMergedInto->z * (toBeMergedInto->mergeCounter) + toBeMergedFrom->z)/(1+toBeMergedInto->mergeCounter);
-  toBeMergedInto->value = (toBeMergedInto->initValue + toBeMergedFrom->initValue)/2 + (50 * toBeMergedInto->mergeCounter);
-  toBeMergedInto->initValue = toBeMergedInto->value;
+  arrayLF->mergeCounter ++;
+  arrayLF->xPos = (arrayLF->xPos * arrayLF->mergeCounter + inputLF->xPos)/(1+arrayLF->mergeCounter);
+  arrayLF->length = (arrayLF->length * arrayLF->mergeCounter + inputLF->length)/(1+arrayLF->mergeCounter);
+  int additionalWidth = inputLF->width - ((arrayLF->z + arrayLF->width/2) -(inputLF->z - inputLF->width/2));
+  arrayLF->width = arrayLF->width + additionalWidth;
+  arrayLF->speed = (arrayLF->speed * arrayLF->mergeCounter + inputLF->speed)/(1+arrayLF->mergeCounter);
+  arrayLF->z =  (arrayLF->z * arrayLF->mergeCounter + inputLF->z)/(1+arrayLF->mergeCounter);
+  arrayLF->value = (arrayLF->initValue * arrayLF->mergeCounter + inputLF->initValue)/(1 + arrayLF->mergeCounter) + (SIZE_BONUS * additionalWidth);
+  arrayLF->initValue = arrayLF->value;
 
 #if (IS_SIMULATION == 5)
   std::cout << "into : X: "<< toBeMergedInto->xPos <<
@@ -89,7 +93,7 @@ static void addNewLandingField(pcl_filter::LandingField landingField){
   inputLandingField.xPos = landingField.xPos;
   inputLandingField.time = landingField.timestamp;
   inputLandingField.z = landingField.z;
-  inputLandingField.hight = landingField.hight;
+  inputLandingField.height = landingField.hight;
   inputLandingField.length = landingField.length;
   inputLandingField.width = landingField.width;
   inputLandingField.turnCounter = landingField.turnCounter;
@@ -131,7 +135,7 @@ static void addNewLandingField(pcl_filter::LandingField landingField){
   //iterate trough the array and fing the right place for the given landingField.
 
   if(currentEntries == 0){
-    posLandingFieldArray[0] = inputLandingField;
+    landingFieldArray[0] = inputLandingField;
     currentEntries ++;
   }
   else{
@@ -139,14 +143,14 @@ static void addNewLandingField(pcl_filter::LandingField landingField){
     //search throu the landingField array to find mergable landingfields and if so merge them.
 
     for(int j = 0; j < currentEntries; j++){
-      if(posLandingFieldArray[j].mergeCounter < 5 && posLandingFieldArray[j].turnCounter == inputLandingField.turnCounter){
-        int zDistance = inputLandingField.z - posLandingFieldArray[j].z; // inputLandingFields z value should always be same or greater then the entry form the array.
-        if(zDistance <= (posLandingFieldArray[j].width/2 + LANDING_FIELD_SIZE/2)){ //check if z distanzc isn't too far
-          float xDistance =  abs(posLandingFieldArray[j].xPos - inputLandingField.xPos);
+      if(landingFieldArray[j].mergeCounter < 5 && landingFieldArray[j].turnCounter == inputLandingField.turnCounter){
+        int zDistance = inputLandingField.z - landingFieldArray[j].z; // inputLandingFields z value should always be same or greater then the entry form the array.
+        if(zDistance <= (landingFieldArray[j].width/2 + LANDING_FIELD_SIZE/2)){ //check if z distanzc isn't too far
+          float xDistance =  abs(landingFieldArray[j].xPos - inputLandingField.xPos);
           if(xDistance <= LANDING_FIELD_SIZE){ //Check if x distance is also acceptable
-            float lengthDiff = abs(posLandingFieldArray[j].length - inputLandingField.length);
+            float lengthDiff = abs(landingFieldArray[j].length - inputLandingField.length);
             if(lengthDiff < LANDING_FIELD_SIZE){ //Ckeck if there is a maxiaml length difference of 2 min sized LandingFields
-              mergeTwoLandingFields(&posLandingFieldArray[j], &inputLandingField);
+              mergeTwoLandingFields(&landingFieldArray[j], &inputLandingField);
               return;
             }
           }
@@ -158,7 +162,7 @@ static void addNewLandingField(pcl_filter::LandingField landingField){
 
     int i = 0;
     //find the right place for the calculated landing Field.
-    while(i < currentEntries && posLandingFieldArray[i].value > inputLandingField.value ){
+    while(i < currentEntries && landingFieldArray[i].value > inputLandingField.value ){
       i ++;
       if(i >= NUMBER_OF_POSSIBLE_LANDING_FIELDS){
         //all landingFields current in the array are better then the one calculated
@@ -168,26 +172,26 @@ static void addNewLandingField(pcl_filter::LandingField landingField){
     if(i < currentEntries){
       //put the inputLandingField into the right place:
       possibleLandingField_t tempLandingField;
-      tempLandingField = posLandingFieldArray[i];
-      posLandingFieldArray[i] = inputLandingField;
+      tempLandingField = landingFieldArray[i];
+      landingFieldArray[i] = inputLandingField;
       i++;
 
       //push the other entries deeper back into the Array
       possibleLandingField_t tempLandingField2;
 
       for(i ; i< currentEntries; i++){
-        tempLandingField2 = posLandingFieldArray[i];
-        posLandingFieldArray[i] = tempLandingField;
+        tempLandingField2 = landingFieldArray[i];
+        landingFieldArray[i] = tempLandingField;
         tempLandingField = tempLandingField2;
       }
       //if the end of the array is reached delet the last entry, otherwise put the last entry at the first free place an count the currentEntries up.
       if(currentEntries < NUMBER_OF_POSSIBLE_LANDING_FIELDS){
-        posLandingFieldArray[currentEntries] = tempLandingField;
+        landingFieldArray[currentEntries] = tempLandingField;
         currentEntries ++;
         }
       }
     else{
-      posLandingFieldArray[currentEntries] = inputLandingField;
+      landingFieldArray[currentEntries] = inputLandingField;
       currentEntries ++;
     }
   }
@@ -198,6 +202,7 @@ static void addNewLandingField(pcl_filter::LandingField landingField){
 
 static void updateLandingFieldArray(const ros::TimerEvent& event){
 
+
 #if (IS_SIMULATION == 5)
     std::cout << "currentEntriesUpdate " << currentEntries <<endl;
 #endif
@@ -205,24 +210,24 @@ static void updateLandingFieldArray(const ros::TimerEvent& event){
   if(currentEntries > 1){
     //Use forgettingfunction to give the entries new values
     for(int i = 0; i<currentEntries ; i++){
-      int newValue = posLandingFieldArray[i].value - (currentEntries + currentSpeed + (MAX_VALUE_FIELD - posLandingFieldArray[i].initValue)/10);
+      int newValue = landingFieldArray[i].value - (currentEntries + currentSpeed + (MAX_VALUE_FIELD - landingFieldArray[i].initValue)/10);
       if(newValue > MIN_VALUE && newValue < MAX_VALUE_FIELD){
-        posLandingFieldArray[i].value = newValue;
+        landingFieldArray[i].value = newValue;
       }
       else{
-        posLandingFieldArray[i].value = MIN_VALUE -1;
+        landingFieldArray[i].value = MIN_VALUE -1;
       }
 
     }
-    possibleLandingField_t tempLandingField;
     //sort the Array and delete "bad" entries
+    possibleLandingField_t tempLandingField;
     int sorted = 0;
     while(sorted < currentEntries-1){
       for(int i = 0;i<currentEntries-1;i++){
-        if(posLandingFieldArray[i].value < posLandingFieldArray[i+1].value){
-          tempLandingField = posLandingFieldArray[i];
-          posLandingFieldArray[i] = posLandingFieldArray[i+1];
-          posLandingFieldArray[i+1] = tempLandingField;
+        if(landingFieldArray[i].value < landingFieldArray[i+1].value){
+          tempLandingField = landingFieldArray[i];
+          landingFieldArray[i] = landingFieldArray[i+1];
+          landingFieldArray[i+1] = tempLandingField;
         }
         else{
           sorted ++;
@@ -231,8 +236,8 @@ static void updateLandingFieldArray(const ros::TimerEvent& event){
 
     }
     int i = currentEntries -1;
-    while(posLandingFieldArray[i].value < MIN_VALUE && i > 0){
-        posLandingFieldArray[i].value = 0; // fill pointer with NULL for saftey reasons
+    while(landingFieldArray[i].value < MIN_VALUE && i > 0){
+        landingFieldArray[i].value = 0;
         currentEntries --;
         i --;
     }
@@ -240,19 +245,22 @@ static void updateLandingFieldArray(const ros::TimerEvent& event){
 #if (IS_SIMULATION > 0)
   std::cout <<"posLandingFieldArray entries:" << endl;
   for(int i= 0 ; i < currentEntries; i++){
-  std::cout <<"value:" << posLandingFieldArray[i].value <<
-              "\tinitVal:" << posLandingFieldArray[i].initValue<<
-              "\txPos:" << posLandingFieldArray[i].xPos <<
-              "\ttime:" << posLandingFieldArray[i].time <<
-              "\tspeed:" << posLandingFieldArray[i].speed <<
-              "\nz:"  << posLandingFieldArray[i].z<<
-              "\thight:" << posLandingFieldArray[i].hight <<
-              "\tlength:" << posLandingFieldArray[i].length <<
-              "\twidth:" << posLandingFieldArray[i].width<<
-              "\tmergeCnt:"<< posLandingFieldArray[i].mergeCounter <<
-              "\tturnCnt:" <<posLandingFieldArray[i].turnCounter <<
+  std::cout <<"value:" << landingFieldArray[i].value <<
+              "\tinitVal:" << landingFieldArray[i].initValue<<
+              "\txPos:" << landingFieldArray[i].xPos <<
+              "\ttime:" << landingFieldArray[i].time <<
+              "\tspeed:" << landingFieldArray[i].speed <<
+              "\nz:"  << landingFieldArray[i].z<<
+              "\thight:" << landingFieldArray[i].height <<
+              "\tlength:" << landingFieldArray[i].length <<
+              "\twidth:" << landingFieldArray[i].width<<
+              "\tmergeCnt:"<< landingFieldArray[i].mergeCounter <<
+              "\tturnCnt:" <<landingFieldArray[i].turnCounter <<
               "\n" << endl;
   }
+
+
+
 
 #endif
 
@@ -262,22 +270,22 @@ static void updateLandingFieldArray(const ros::TimerEvent& event){
   static int Counter = 0;
   if(currentEntries > 0){
   std::ofstream file_stream;
-  file_stream.open("LandingFields.txt",ios_base::app);
+  file_stream.open(textFileName,ios_base::app);
   file_stream << "Entry Nbr: " << Counter <<
                "\n posLandingFieldArray entries:" << endl;
   for(int i= 0 ; i < currentEntries; i++){
-  file_stream <<"Nr." << i <<
-              "\tvalue:" << posLandingFieldArray[i].value <<
-              "\tinitVal:" << posLandingFieldArray[i].initValue<<
-              "\txPos:" << posLandingFieldArray[i].xPos <<
-              "\ttime:" << posLandingFieldArray[i].time <<
-              "\tspeed:" << posLandingFieldArray[i].speed <<
-              "\nz:"  << posLandingFieldArray[i].z<<
-              "\thight:" << posLandingFieldArray[i].hight <<
-              "\tlength:" << posLandingFieldArray[i].length <<
-              "\twidth:" << posLandingFieldArray[i].width <<
-              "\tmergeCnt:"<< posLandingFieldArray[i].mergeCounter <<
-              "\tturnCnt:" << posLandingFieldArray[i].turnCounter <<
+  file_stream <<"Nr." << i + 1 <<
+              "\tvalue:" << landingFieldArray[i].value <<
+              "\tinitVal:" << landingFieldArray[i].initValue<<
+              "\txPos:" << landingFieldArray[i].xPos <<
+              "\ttime:" << landingFieldArray[i].time <<
+              "\tspeed:" << landingFieldArray[i].speed <<
+              "\nz:"  << landingFieldArray[i].z<<
+              "\thight:" << landingFieldArray[i].height <<
+              "\tlength:" << landingFieldArray[i].length <<
+              "\twidth:" << landingFieldArray[i].width <<
+              "\tmergeCnt:"<< landingFieldArray[i].mergeCounter <<
+              "\tturnCnt:" << landingFieldArray[i].turnCounter <<
               "\n" << endl;
   }
   Counter ++;
@@ -301,18 +309,18 @@ static void updateLandingFieldArray(const ros::TimerEvent& event){
     posLandingFields.markers[i].id = i;
 
     // Set width of lines
-    posLandingFields.markers[i].scale.x = posLandingFieldArray[i].length;
+    posLandingFields.markers[i].scale.x = landingFieldArray[i].length;
     posLandingFields.markers[i].scale.y = 0.2;
-    posLandingFields.markers[i].scale.z = posLandingFieldArray[i].width;
+    posLandingFields.markers[i].scale.z = landingFieldArray[i].width;
 
     // Make them blue
     posLandingFields.markers[i].color.b = 0.5f;
     posLandingFields.markers[i].color.a = 0.6;
 
     // Set position
-    posLandingFields.markers[i].pose.position.x = posLandingFieldArray[i].xPos;
-    posLandingFields.markers[i].pose.position.y = posLandingFieldArray[i].hight;
-    posLandingFields.markers[i].pose.position.z = posLandingFieldArray[i].z;
+    posLandingFields.markers[i].pose.position.x = landingFieldArray[i].xPos;
+    posLandingFields.markers[i].pose.position.y = landingFieldArray[i].height;
+    posLandingFields.markers[i].pose.position.z = landingFieldArray[i].z;
   }
 
   //fill the Markers with the corresponding number in white
@@ -341,9 +349,9 @@ static void updateLandingFieldArray(const ros::TimerEvent& event){
     posLandingFields.markers[i+currentEntries].color.a = 1;
 
     // Set position
-    posLandingFields.markers[i+currentEntries].pose.position.x = posLandingFieldArray[i].xPos;
-    posLandingFields.markers[i+currentEntries].pose.position.y = posLandingFieldArray[i].hight;
-    posLandingFields.markers[i+currentEntries].pose.position.z = posLandingFieldArray[i].z;
+    posLandingFields.markers[i+currentEntries].pose.position.x = landingFieldArray[i].xPos;
+    posLandingFields.markers[i+currentEntries].pose.position.y = landingFieldArray[i].height;
+    posLandingFields.markers[i+currentEntries].pose.position.z = landingFieldArray[i].z;
   }
   LandingFields.publish(posLandingFields);
 #endif
@@ -355,7 +363,7 @@ static void updateCurrentSpeed(std_msgs::Int32 newSpeed){
 
 static void turnOccured(std_msgs::Int32 turnNbr){
   std::ofstream file_stream;
-  file_stream.open("LandingFields.txt",ios_base::app);
+  file_stream.open(textFileName,ios_base::app);
   file_stream << "\n Turn Occured. Z was set to 0 !! \n " << endl;
   file_stream.close();
 }
@@ -405,7 +413,8 @@ int main(int argc, char **argv)
   // create a timer which calls the sorting-function periodically
   ros::Timer timer = n.createTimer(ros::Duration(3),updateLandingFieldArray,false);
 
-  // Create a ROS publisher for the output point cloud
+
+  // Create a ROS publisher for the output poisinglnt cloud
 #if (IS_SIMULATION == 5)
   LandingFields = n.advertise<visualization_msgs::Marker>("LandingFields", 1);
 #elif (IS_SIMULATION == 6)
@@ -413,10 +422,18 @@ int main(int argc, char **argv)
 #endif
 
 #if (IS_SIMULATION == 7)
-  std::ofstream file_stream;
-  file_stream.open("LandingFields.txt",ios_base::trunc);
-  file_stream.close();
+  //std::ofstream file_stream;
+  //file_stream.open("LandingFields.txt",ios_base::trunc);
+  //file_stream.close();
+
+  // concatonate the date onto the file name so that no other text file geds overwritten.
+  time_t timeAct;
+  time(&timeAct);
+  strftime(textFileName,49,"LandingFields_%d_%m_%H_%M",localtime(&timeAct));
+  strcat(textFileName,".txt");
 #endif
+
+
   /**
    * ros::spin() will enter a loop, pumping callbacks.  With this version, all
    * callbacks will be called from within this thread (the main one).  ros::spin()

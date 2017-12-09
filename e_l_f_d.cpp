@@ -27,7 +27,7 @@ using namespace std;
 
 //possibleLandingField_p* posLandingFieldArray; //Array where the possible landing sides are stored;
 lineRow_p lineRowArray[SIZE_OF_ROW_BUFFER];         //Array of the scanned lines is handled as ringbuffer.
-float currentSpeed = 5.0;       //Current speed of the Drone needs to be updated ! [m/s]
+float currentSpeed = 0.0;       //Current speed of the Drone needs to be updated ! [m/s]
 float headingAngle = 0;         //Heading angle to detect turn manouvers [rad]
 int turnCounter = 0;
 int deleteEntriesFlag = 0;
@@ -64,32 +64,36 @@ static void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
 
   // Container for original & filtered data
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_unfiltered (new pcl::PointCloud<pcl::PointXYZ>);
-  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_filteredConditional (new pcl::PointCloud<pcl::PointXYZ>);
+  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_filteredCon (new pcl::PointCloud<pcl::PointXYZ>);
   pcl::PointCloud<pcl::PointXYZ> cloud_filtered;
   cloud_filtered.header.frame_id ="VUX-1";
+
 
   // Convert to PCL data type
   pcl::fromROSMsg(*input, *cloud_unfiltered);
 
-  if(cloud_unfiltered->width > 0 || headingAngle > 10){ //Check if the cloud has points in it
+  //Check if the cloud has points in it
+  if(cloud_unfiltered->width > 0 || headingAngle < MAX_HEADING_ANGLE){
 
-  // Perform first filtering => filter all points that are hihger then 20m under the UAV
+  // Perform first filtering => filter all points that are hihger then the MIN_FLIGHT_HIGH under the UAV
   pcl::PassThrough<pcl::PointXYZ> ptfilter (new pcl::PassThrough<pcl::PointXYZ>);
   ptfilter.setInputCloud(cloud_unfiltered);
   ptfilter.setFilterFieldName ("y");
   ptfilter.setFilterLimits (-1000.0, - MIN_FLIGHT_HIGH);
-  ptfilter.filter(*cloud_filteredConditional);
+  ptfilter.filter(*cloud_filteredCon );
 
-  if(cloud_filteredConditional->width >0){ //Check again if this cloud has no points in it, the UAV is flying to low.
+  //Check again if this cloud has no points in it, the UAV is flying to low.
+  if(cloud_filteredCon ->width >0){
 
   // Preform second filtering => filter all points that don't have any direct neighbours, which are probably dust.
-  pcl::RadiusOutlierRemoval<pcl::PointXYZ> filter (new pcl::RadiusOutlierRemoval<pcl::PointXYZ>);
-  filter.setMinNeighborsInRadius(1);
-  filter.setRadiusSearch(0.2);
-  filter.setInputCloud(cloud_filteredConditional);
-  filter.filter(cloud_filtered);
+  pcl::RadiusOutlierRemoval<pcl::PointXYZ> ror_filter (new pcl::RadiusOutlierRemoval<pcl::PointXYZ>);
+  ror_filter.setMinNeighborsInRadius(1);
+  ror_filter.setRadiusSearch(0.2);
+  ror_filter.setInputCloud(cloud_filteredCon );
+  ror_filter.filter(cloud_filtered);
 
-  if(cloud_filtered.width > 250){ //Check a last time if the cloud has still enough points in it
+  //Check a last time if the cloud has still enough points in it
+  if(cloud_filtered.width > LANDING_FIELD_SIZE * DENSITY_PER_M){
 
   //Calculate the size of the lineArray which will be computet depending on x position of first and last entry of the given PC.
   int numberOfLines = (int) (abs(cloud_filtered[0].x) + abs(cloud_filtered[cloud_filtered.width-1].x))/LINE_PIECE_SIZE;
@@ -104,31 +108,21 @@ static void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
 #endif
 
   //Divide in defined pc pieces and convert them into line pieces
-  int i = 0;
+  int pcIterator = 0;
   int lineArrayIterator = 0;
-//  while(!(((int)cloud_filtered[i].x)%1 < 0.1 && ((int)cloud_filtered[i].x)%1 > -0.1)){ // Determinate the start point +- 1cm
-//    i ++;
-//  }
 
-  int pos = (int) cloud_filtered[i].x;
-
-#if (IS_SIMULATION == 7)
-    //std::cout <<"a" <<endl;
-#endif
-
+  int pos = (int) cloud_filtered[pcIterator].x;
 
   do{    
-    int start = i;
-    float xstart = pos; //is needed later for calculation of the m value of the line
+    int start = pcIterator;
+    int xStart = pos; //is needed later for calculation of the slop value of the line
+    pos = pos + (int) LINE_PIECE_SIZE;
 
   //find all points that are in one line
-  while((cloud_filtered[i].x < (pos + LINE_PIECE_SIZE)) && (i < (cloud_filtered.width-1))){
-    i ++;
+  while((cloud_filtered[pcIterator].x < pos) && (pcIterator < (cloud_filtered.width-1))){
+    pcIterator ++;
   }
-    int end = i -1;
-
-    int x = pos;
-    pos = pos + (int) LINE_PIECE_SIZE;
+    int end = pcIterator -1;
 
     int value = 0;
     double yStart = 0;
@@ -140,11 +134,10 @@ static void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
      // std::cout << "DANGER \t !!! line tracking isn't working !!! \n It is possible that landing fields will be detected under the voltage line !!!" << endl;
     }
     else{   //check if the new line is under the voltage line -> make size = 0 => line will considerer as bad because of density
-      if((xstart > voltageLinePositionX-VOLTAGE_LINE_SIZE/2 && xstart < voltageLinePositionX+VOLTAGE_LINE_SIZE/2) ||
+      if((xStart > voltageLinePositionX-VOLTAGE_LINE_SIZE/2 && xStart < voltageLinePositionX+VOLTAGE_LINE_SIZE/2) ||
          (pos > voltageLinePositionX-VOLTAGE_LINE_SIZE/2 && pos < voltageLinePositionX+VOLTAGE_LINE_SIZE/2)){
           size = 0;
       }
-
     }
 
 
@@ -163,13 +156,14 @@ static void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
       double xyMul = 0.0;
 
       for(int i = start; i<=end; i++){
-        xMean += cloud_filtered[i].x - xstart; //this way every x value of the array is treated as the line woud begin at x = 0
+        xMean += cloud_filtered[i].x - xStart; //this way every x value of the array is treated as the line woud begin at x = 0
         yMean += cloud_filtered[i].y;
-        xSquared += (cloud_filtered[i].x-xstart)*(cloud_filtered[i].x -xstart);
-        xyMul += (cloud_filtered[i].x - xstart) * cloud_filtered[i].y;
+        xSquared += (cloud_filtered[i].x-xStart)*(cloud_filtered[i].x -xStart);
+        xyMul += (cloud_filtered[i].x - xStart) * cloud_filtered[i].y;
       }
 
       xMean = xMean/((float)size);
+
       yMean = yMean/((float)size);
 
 
@@ -178,7 +172,7 @@ static void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
 
       //calculate the average roughness
       for(int i = start ; i <= end; i++){
-        float onePointError = abs((slope * (cloud_filtered[i].x -xstart) + yStart - cloud_filtered[i].y));
+        float onePointError = abs((slope * (cloud_filtered[i].x -xStart) + yStart - cloud_filtered[i].y));
 
         if(onePointError > MAX_ACCEPTED_DIFFERENCE){  //Test if the Error is greater then the maximal axepted Difference
           value = -1;  //If there are too much height difference in more then one point -> probebly a staff or something
@@ -201,7 +195,7 @@ static void PCRowHandler(const sensor_msgs::PointCloud2ConstPtr& input){
 #endif
 
     //Save calculated values into the Array
-    lineArray[lineArrayIterator].x = x;
+    lineArray[lineArrayIterator].x = xStart;
     lineArray[lineArrayIterator].yStart = yStart;
     lineArray[lineArrayIterator].slope = slope;
     lineArray[lineArrayIterator].roughness = roughness;
@@ -372,7 +366,7 @@ oldTime = timestamp.toSec();
     //Publish the filtered cloud vor visualization purpose
     sensor_msgs::PointCloud2 output;
     output.header.frame_id = "VUX-1";
-    pcl::toROSMsg(cloud_filtered, output);
+    pcl::toROSMsg(*cloud_filteredCon, output);
 
     pub.publish(output);
 #endif
@@ -391,7 +385,7 @@ oldTime = timestamp.toSec();
     calculatedRow->velocity = currentSpeed;             // current velocity of the drone
     calculatedRow->numberOfLines = numberOfLines;
     calculatedRow->z = z;
-    handleLines(calculatedRow);
+    fieldDetector(calculatedRow);
 
   }
   else{
@@ -413,15 +407,17 @@ oldTime = timestamp.toSec();
  *
  *\param lineRow: a pointer to a lineRow struct whicht should be stored.
  */
-static void handleLines(lineRow_p lineRow){
+static void fieldDetector(lineRow_p lineRow){
    static int lineRowArrayIndexerStart = 0;
    static int lineRowArrayIndexerEnd = 0;
    static int currentEntries = 0;
 
+   //Delet all entries if the lineRowArray is full -> the UAV does't fly forward and therefor it doesn't make any sence to try to find landing fields.
    if(currentEntries == SIZE_OF_ROW_BUFFER){
      deleteEntriesFlag = 1;
    }
 
+   //Is done this way because the flag can also be set from the TurnOccured function to delet all entries.
    if(deleteEntriesFlag){
      deleteEntriesFlag = 0;
      int i = 0;
@@ -449,12 +445,12 @@ static void handleLines(lineRow_p lineRow){
    currentEntries ++;
 
 #if (IS_SIMULATION == 7)
-    std::cout <<"e" <<endl;
+    //std::cout <<"e" <<endl;
 #endif
 
-   float aproxSpeed = (lineRowArray[lineRowArrayIndexerEnd]->velocity +  lineRowArray[lineRowArrayIndexerStart]->velocity)/2;
-   float distanceStartEnd = (lineRowArray[lineRowArrayIndexerEnd]->timestamp.toSec() - lineRowArray[lineRowArrayIndexerStart]->timestamp.toSec())*aproxSpeed;
-#if (IS_SIMULATION == 3 || IS_SIMULATION == 4 || IS_SIMULATION == 7)
+//   float aproxSpeed = (lineRowArray[lineRowArrayIndexerEnd]->velocity +  lineRowArray[lineRowArrayIndexerStart]->velocity)/2;
+   float distanceStartEnd = lineRowArray[lineRowArrayIndexerEnd]->z - lineRowArray[lineRowArrayIndexerStart]->z;
+#if (IS_SIMULATION == 3 || IS_SIMULATION == 4 )
             std::cout << "distanceStartEnd: " << distanceStartEnd << endl;
 #endif
 
@@ -482,17 +478,15 @@ static void handleLines(lineRow_p lineRow){
 
      //Array for the possible landing sides first entry is x value second is the index of the first lineRow = lineRowArrayIndexerStart
      int maxPossLandingField = (lineRowArray[lineRowArrayIndexerStart]->numberOfLines * LINE_PIECE_SIZE)/LANDING_FIELD_SIZE;
-     int possibleLandingSides[maxPossLandingField][2]; //This way it is alway great enough.
-
-
+     int contiguouslyGoodLines[maxPossLandingField][2]; //This way it is alway great enough.
      int posLineCounter = 0;
      int i = 0;
-     int posLandingSidesCounter = 0;
+     int goodLineGroupsCounter = 0;
      float yStartDifference = 0;
 //#if (IS_SIMULATION == 7)
 //    std::cout <<"e.1" <<endl;
 //#endif
-      do{
+     do{
         // Calculate the difference in hight bewtween the different lines.
         if(i == 0){
           yStartDifference = abs(lineRowArray[lineRowArrayIndexerStart]->LineRow[i].yStart - lineRowArray[lineRowArrayIndexerStart]->LineRow[i+ 1].yStart);
@@ -505,8 +499,8 @@ static void handleLines(lineRow_p lineRow){
         if(lineRowArray[lineRowArrayIndexerStart]->LineRow[i].value > MIN_VALUE && yStartDifference < MAX_ACCEPTED_DIFFERENCE){
           posLineCounter ++;
           if(posLineCounter > (LANDING_FIELD_SIZE/LINE_PIECE_SIZE)){
-            possibleLandingSides[posLandingSidesCounter][0] = lineRowArray[lineRowArrayIndexerStart]->LineRow[i].x;
-            possibleLandingSides[posLandingSidesCounter][1] = i;
+            contiguouslyGoodLines[goodLineGroupsCounter][0] = lineRowArray[lineRowArrayIndexerStart]->LineRow[i].x;
+            contiguouslyGoodLines[goodLineGroupsCounter][1] = i;
 #if (IS_SIMULATION == 3 || IS_SIMULATION == 4)
             std::cout << "posLandingSidesCounter: " << posLandingSidesCounter<<  endl;
 #endif
@@ -514,8 +508,8 @@ static void handleLines(lineRow_p lineRow){
 
             std::cout << "possibleLandingsideDetected at: " << possibleLandingSides[posLandingSidesCounter][0] << endl;
 #endif
-            posLandingSidesCounter ++;
-            // This way a flat place counts as just one plane not multible ones which enables to find fields that ae greater then just the LANDING_FIELD_SIZE
+            goodLineGroupsCounter ++;
+            // This way a flat place counts as just one plane not multible ones which enables to find fields that are greater then just the LANDING_FIELD_SIZE
             while(lineRowArray[lineRowArrayIndexerStart]->LineRow[i].value > MIN_VALUE && yStartDifference < MAX_ACCEPTED_DIFFERENCE && i<lineRowArray[lineRowArrayIndexerStart]->numberOfLines)
             {
               i++;
@@ -534,7 +528,7 @@ static void handleLines(lineRow_p lineRow){
 #endif
 #if (IS_SIMULATION != 1 || IS_SIMULATION != 2)
       // Check if there are possible landingsides which can be computed
-      if(posLandingSidesCounter > 0){
+      if(goodLineGroupsCounter > 0){
         i = 0;
         do{
           int indexer = 0;
@@ -545,9 +539,8 @@ static void handleLines(lineRow_p lineRow){
           int startingPoints[currentEntries];
           int goodColumns = 1;
           float slope = 0;
-
           while(goodColumns){
-            if(lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer].value < MIN_VALUE){
+            if(lineRowArray[lineRowArrayIndexerStart]->LineRow[contiguouslyGoodLines[i][1]+indexer].value < MIN_VALUE){
               goodColumns = 0;
             }
             //find the same line in the upper rows an check there values
@@ -557,26 +550,14 @@ static void handleLines(lineRow_p lineRow){
               if(y >= SIZE_OF_ROW_BUFFER) {y = 0;}
               int z = 0;
               while(y != lineRowArrayIndexerEnd && (upLinesChecker || !indexer)){ //this loop iterates from the given start line upwards in lineRows
-                //if(y >= SIZE_OF_ROW_BUFFER) {y = 0;}
-
-
-//#if (IS_SIMULATION == 7)
-//    std::cout <<"g1" <<endl;
-//#endif
               if(indexer == 0){ //if this is the first iteration for this possibleLandingSides entry
                 int j = 0;
-//#if (IS_SIMULATION == 7)
-//    std::cout <<"y " << y << "z " << z << "NumbrLine " << lineRowArray[y]->numberOfLines << "i " << i<< "possLaSide: " << possibleLandingSides[i][0] << endl;
-//#endif
-                while(lineRowArray[y]->LineRow[j].x != possibleLandingSides[i][0] && upLinesChecker){  //find the line in the upper lineRow with the same x position as the one at the bottom of the Array
+                while(lineRowArray[y]->LineRow[j].x != contiguouslyGoodLines[i][0] && upLinesChecker){  //find the line in the upper lineRow with the same x position as the one at the bottom of the Array
                   j++;
                   if(j >= (lineRowArray[y]->numberOfLines -1)){upLinesChecker = 0;}
                 }
                 startingPoints[z] = j;      //Store the actual index into the Array to find the same point faster in the next iteration
                 if(upLinesChecker){
-//#if (IS_SIMULATION == 7)
-//    std::cout <<"g3" <<endl;
-//#endif
                   if(lineRowArray[y]->LineRow[j].value < MIN_VALUE) {upLinesChecker = 0;}
                   else{
                     // Save the amount of lines an there value for later use
@@ -584,11 +565,6 @@ static void handleLines(lineRow_p lineRow){
                     landingFieldValue += lineRowArray[y]->LineRow[j].value;
                   }
                 }
-
-//#if (IS_SIMULATION == 7)
-//    std::cout <<"g4" <<endl;
-//#endif
-
               }
               else{ //same as above if it isn't the first iteration
                 if(startingPoints[z]+indexer < lineRowArray[y]->numberOfLines){
@@ -603,9 +579,6 @@ static void handleLines(lineRow_p lineRow){
                 }
               }
 
-//#if (IS_SIMULATION == 7)
-//    std::cout <<"g" <<endl;
-//#endif
 #if (IS_SIMULATION == 3)
             std::cout << "y: " << y<<  "\t j: " << j<<  endl;
             std::cout <<     " z: " << z <<
@@ -620,7 +593,7 @@ static void handleLines(lineRow_p lineRow){
               z ++;
             }
             if(upLinesChecker){ // if all upper lines were also good.
-              float columnSlope = abs(lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer].yStart - lineRowArray[lineRowArrayIndexerEnd]->LineRow[startingPoints[z-1]+indexer].yStart)/LANDING_FIELD_SIZE;
+              float columnSlope = abs(lineRowArray[lineRowArrayIndexerStart]->LineRow[contiguouslyGoodLines[i][1]+indexer].yStart - lineRowArray[lineRowArrayIndexerEnd]->LineRow[startingPoints[z-1]+indexer].yStart)/LANDING_FIELD_SIZE;
               if(columnSlope < MAX_ACCEPTED_SLOPE){ //check if slope in z-axis is also good.
                 goodColumnsCounter ++;
                 slope += columnSlope;
@@ -632,10 +605,6 @@ static void handleLines(lineRow_p lineRow){
               goodColumnsCounter = 0;
               slope = 0;
             }
-//#if (IS_SIMULATION == 7)
-//    std::cout <<"h" <<endl;
-//#endif
-
             if(goodColumnsCounter >= (LANDING_FIELD_SIZE/LINE_PIECE_SIZE) && !upLinesChecker){ //Enough good Columns where detectet -> ah possible landing field
               //publish here a possible landing field with the array of the lines -> value, time, speed etc.
 
@@ -645,9 +614,7 @@ static void handleLines(lineRow_p lineRow){
               if(landingFieldSize/goodColumnsCounter > LANDING_FIELD_SIZE * 2){
               slope = slope/goodColumnsCounter;
               //calculate the value with the value functione. Should maybe done differently
-              newPossLandField.value = (landingFieldValue/landingFieldSize) - (slope * 100) + (goodColumnsCounter - LANDING_FIELD_SIZE/LINE_PIECE_SIZE)*10;
-              newPossLandField.length = goodColumnsCounter/LINE_PIECE_SIZE;
-              newPossLandField.xPos = lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+indexer].x -  (newPossLandField.length/2);
+              newPossLandField.value = (landingFieldValue/landingFieldSize) - (slope * 100) + (goodColumnsCounter - LANDING_FIELD_SIZE/LINE_PIECE_SIZE)*SIZE_BONUS;
               int middleLine = lineRowArrayIndexerStart + currentEntries/2;
               if(middleLine >= SIZE_OF_ROW_BUFFER-1){
                 middleLine = currentEntries/2 - (SIZE_OF_ROW_BUFFER-1-lineRowArrayIndexerStart);
@@ -655,7 +622,7 @@ static void handleLines(lineRow_p lineRow){
               newPossLandField.timestamp = lineRowArray[middleLine]->timestamp;
               newPossLandField.velocity = lineRowArray[middleLine]->velocity;
               newPossLandField.z = lineRowArray[middleLine]->z;
-              newPossLandField.hight = lineRowArray[lineRowArrayIndexerStart]->LineRow[possibleLandingSides[i][1]+(int)(goodColumnsCounter/2)].yStart;
+              newPossLandField.hight = lineRowArray[lineRowArrayIndexerStart]->LineRow[contiguouslyGoodLines[i][1]+(int)(goodColumnsCounter/2)].yStart;
               newPossLandField.width = LANDING_FIELD_SIZE;
               newPossLandField.turnCounter = turnCounter;
 
@@ -705,7 +672,7 @@ static void handleLines(lineRow_p lineRow){
           }
           i++;
         }
-        while(i < posLandingSidesCounter);
+        while(i < goodLineGroupsCounter);
       }
 #endif
 
@@ -781,8 +748,7 @@ static void turnOccured(std_msgs::Int32 occuredTurn){
 
 
 #if(IS_SIMULATION == 7)
-  cout << "Turn occrued:  " << turnCounter << endl;
-
+//  cout << "Turn occrued:  " << turnCounter << endl;
 #endif
 
 #if (IS_SIMULATION == 1 || IS_SIMULATION == 6)

@@ -3,7 +3,7 @@
 
 #include <pcl_filter/LandingField.h>
 
-#define IS_SIMULATION 7                       /*define which simulation should be running or if it runs on a real system
+#define IS_SIMULATION 6                       /*define which simulation should be running or if it runs on a real system
                                                * 1: Visualization of the line fitting algorithm with upgowing z value
                                                * 2: Visualization of just one row at a time with z value always 0
                                                * 3: Visualization of the landing field detector, landing fields are visualed as green lines in the PC rows. Does just check one Row !!
@@ -24,6 +24,9 @@
 #define MIN_VALUE 500                         //min value which is needed that a line or landing field is considered as good. 1000 is the Maximal value
 #define SIZE_OF_ROW_BUFFER 1000               //size of the ring buffer which stores the line rows. Has to be great enough to store at least the minimal hight of the landing fiels
 #define MIN_FLIGHT_HIGH 20                    //the minimal flight hight above which the algorithm will start to try to detect landing fields.
+#define MAX_HEADING_ANGLE 10
+#define SIZE_BONUS 10
+
 
 typedef struct line{
   int x;
@@ -48,7 +51,7 @@ typedef lineRow_t* lineRow_p;
 typedef struct possibleLandingField{
   int value;
   int initValue;
-  int hight;
+  int height;
   int mergeCounter;
   int length;
   int width;
@@ -61,7 +64,7 @@ typedef struct possibleLandingField{
 
 typedef possibleLandingField_t* possibleLandingField_p;
 
-static void handleLines(lineRow_p);
+static void fieldDetector(lineRow_p);
 
 static void updateVoltageLinePos(std_msgs::Int32);
 
